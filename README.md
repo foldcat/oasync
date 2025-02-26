@@ -18,12 +18,12 @@ import oasync "../oasync"
 import "core:fmt"
 
 child :: proc(t: oasync.Worker) {
-	fmt.println("hi from child task")
+  fmt.println("hi from child task")
 }
 
 core :: proc(t: oasync.Worker) {
   fmt.println("test")
-	oasync.spawn_task(oasync.make_task(child))
+  oasync.spawn_task(oasync.make_task(child))
 }
 
 main :: proc() {
