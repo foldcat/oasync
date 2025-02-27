@@ -3,6 +3,7 @@ package oasync
 import "core:container/queue"
 import "core:fmt"
 import "core:log"
+import "core:math/rand"
 import vmem "core:mem/virtual"
 import "core:sync"
 import "core:sync/chan"
@@ -52,36 +53,32 @@ get_worker :: proc() -> ^Worker {
 }
 
 steal :: proc(this: ^Worker) {
-	// TODO: steal randomly instead of being predictable
-	for &worker in this.coordinator.workers {
-		if worker.timestamp == this.timestamp {
-			// same id, don't steal from self,
-			// thus continue
-			continue
+	// steal from a random worker
+	worker := rand.choice(this.coordinator.workers[:])
+	if worker.timestamp == this.timestamp {
+		// same id, and don't steal from self,
+		return
+	}
+
+	sync.mutex_lock(&worker.localq_mutex)
+	defer sync.mutex_unlock(&worker.localq_mutex) // make sure the mutex doesn't get perma locked
+	// we don't steal from queues that doesn't have items
+	queue_length := queue.len(worker.localq)
+	if queue_length == 0 {
+		return
+	}
+
+	sync.mutex_lock(&this.localq_mutex)
+	defer sync.mutex_unlock(&this.localq_mutex)
+	// steal half of the text once we find one
+	for i in 1 ..= u64(queue_length / 2) { 	// TODO: need further testing
+		elem, ok := queue.pop_front_safe(&worker.localq)
+		if !ok {
+			log.error("failed to steal")
+			return
 		}
 
-		sync.mutex_lock(&worker.localq_mutex)
-		defer sync.mutex_unlock(&worker.localq_mutex) // make sure the mutex doesn't get perma locked
-		// we don't steal from queues that doesn't have items
-		queue_length := queue.len(worker.localq)
-		if queue_length == 0 {
-			continue
-		}
-
-		sync.mutex_lock(&this.localq_mutex)
-		defer sync.mutex_unlock(&this.localq_mutex)
-		// steal half of the text once we find one
-		for i in 1 ..= u64(queue_length / 2) { 	// TODO: need further testing
-			elem, ok := queue.pop_front_safe(&worker.localq)
-			if !ok {
-				// TODO: log error here
-				continue
-			}
-
-			queue.push(&this.localq, elem)
-		}
-
-
+		queue.push(&this.localq, elem)
 	}
 
 }
