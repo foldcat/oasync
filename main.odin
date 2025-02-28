@@ -11,7 +11,7 @@ import "core:thread"
 import "core:time"
 
 Task :: struct {
-	effect: proc(_: Worker),
+	effect: proc(),
 }
 
 // assigned to each thread
@@ -27,13 +27,13 @@ Worker :: struct {
 // heart of the async scheduler
 Coordinator :: struct {
 	workers:      [dynamic]Worker, // could do a static sized one but requires too much parapoly to make worth
-	worker_count: int,
+	worker_count: u8,
 	globalq:      chan.Chan(Task), // TODO: queue instead
 	search_count: u8, // ATOMIC ONLY!
 }
 
 Config :: struct {
-	worker_count:    int,
+	worker_count:    u8,
 	use_main_thread: bool,
 }
 
@@ -84,8 +84,8 @@ steal :: proc(this: ^Worker) {
 }
 
 // unsafe function: do not use
-run_task :: proc(t: Task, worker: Worker) {
-	t.effect(worker)
+run_task :: proc(t: Task) {
+	t.effect()
 }
 
 // event loop that every worker runs
@@ -104,7 +104,7 @@ worker_runloop :: proc(t: ^thread.Thread) {
 		sync.mutex_unlock(&worker.localq_mutex)
 		if exist {
 			log.debug("pulled from local queue, running")
-			run_task(tsk, worker^)
+			run_task(tsk)
 
 			continue
 		}
@@ -115,15 +115,17 @@ worker_runloop :: proc(t: ^thread.Thread) {
 		tsk, exist = chan.try_recv(worker.coordinator.globalq)
 		if exist {
 			log.debug("got item from global channel")
-			run_task(tsk, worker^)
+			run_task(tsk)
 
 			continue
 		}
 
 		// global queue seems to be empty too, enter stealing mode 
 		// increment the stealing count
-		if sync.atomic_load(&worker.coordinator.search_count) >
-		   u8(worker.coordinator.worker_count / 2) { 	// throttle stealing to half the total thread count
+		// this part needs A LOT OF work
+		//log.debug("steal")
+		scount := sync.atomic_load(&worker.coordinator.search_count)
+		if scount < (worker.coordinator.worker_count / 2) { 	// throttle stealing to half the total thread count
 			sync.atomic_add(&worker.coordinator.search_count, 1) // register the stealing
 			steal(worker) // start stealing
 			sync.atomic_sub(&worker.coordinator.search_count, 1) // register the stealing
@@ -144,16 +146,20 @@ spawn_task :: proc(task: Task) {
 }
 
 setup_thread :: proc(worker: ^Worker) -> ^thread.Thread {
-	log.debug("setting up thread")
+	worker.timestamp = time.tick_now()
+
+	log.debug("setting up thread for", worker.timestamp)
+
+	log.debug("init queue")
 	queue.init(&worker.localq)
 
 	// weird name to avoid collision
 	thrd := thread.create(worker_runloop) // make a worker thread
 
-	worker.timestamp = time.tick_now()
 
 	ctx := context
 
+	log.debug("creating arena alloc")
 	arena_alloc := vmem.arena_allocator(&worker.arena)
 
 	ctx.allocator = arena_alloc
@@ -168,12 +174,12 @@ setup_thread :: proc(worker: ^Worker) -> ^thread.Thread {
 
 }
 
-make_task :: proc(p: proc(_: Worker)) -> Task {
+make_task :: proc(p: proc()) -> Task {
 	return Task{effect = p}
 }
 
-go :: proc(p: proc(_: Worker)) {
-	run_task(make_task(p))
+go :: proc(p: proc()) {
+	spawn_task(make_task(p))
 }
 
 
@@ -185,13 +191,10 @@ init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
 	log.debug("setting up global channel")
 
 	ch, aerr := chan.create(chan.Chan(Task), context.allocator)
-	coord.globalq = ch
-
-	if chan.send(coord.globalq, init_task) {
-		log.debug("first task sent")
-	} else {
-		log.error("failed to fire off the first task")
+	if aerr != nil {
+		panic("failed to create channel")
 	}
+	coord.globalq = ch
 
 	log.debug("setting up loggers")
 	for i in 1 ..= coord.worker_count {
@@ -202,6 +205,15 @@ init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
 		thrd := setup_thread(&worker)
 		thread.start(thrd)
 		log.debug("started", i, "th worker")
+	}
+
+	// chan send freezes indefinitely when nothing is listening to it
+	// thus it is placed here
+	log.debug("sending first task")
+	if chan.send(coord.globalq, init_task) {
+		log.debug("first task sent")
+	} else {
+		panic("failed to fire off the first task")
 	}
 
 	// theats the main thread as a worker too

@@ -14,24 +14,29 @@ The code below is a great starting point
 ```odin 
 package oasynctest
 
-import oasync "../oasync"
+import oa "../oasync"
 import "core:fmt"
 
-child :: proc(t: oasync.Worker) {
-  fmt.println("hi from child task")
+child :: proc() {
+	fmt.println("hi from child task")
 }
 
-core :: proc(t: oasync.Worker) {
-  fmt.println("test")
-  oasync.spawn_task(oasync.make_task(child))
+core :: proc() {
+	fmt.println("test")
+	// spawn a procedure in a virtual thread
+	oa.go(child)
 }
 
 main :: proc() {
-  coord := oasync.Coordinator{}
-  cfg := oasync.Config {
-    worker_count    = 4,
-    use_main_thread = true,
-  }
-  oasync.init(&coord, cfg, oasync.make_task(core))
+	coord := oa.Coordinator{}
+	cfg := oa.Config {
+		// amount of threads to use
+		worker_count    = 4,
+		// use the main thread as a worker (does not contribute towards worker_count)
+		use_main_thread = true,
+    }
+
+    // fire off the async runtime
+    oa.init(&coord, cfg, oa.make_task(core))
 }
 ```
