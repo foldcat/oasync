@@ -172,6 +172,10 @@ make_task :: proc(p: proc(_: Worker)) -> Task {
 	return Task{effect = p}
 }
 
+go :: proc(p: proc(_: Worker)) {
+	run_task(make_task(p))
+}
+
 
 init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
 	log.debug("starting worker system")
@@ -182,6 +186,12 @@ init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
 
 	ch, aerr := chan.create(chan.Chan(Task), context.allocator)
 	coord.globalq = ch
+
+	if chan.send(coord.globalq, init_task) {
+		log.debug("first task sent")
+	} else {
+		log.error("failed to fire off the first task")
+	}
 
 	log.debug("setting up loggers")
 	for i in 1 ..= coord.worker_count {
@@ -212,15 +222,6 @@ init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
 		append(&coord.workers, main_worker)
 		coord.worker_count += 1
 
-		log.debug("sending first task")
-		if chan.send(ch, init_task) {
-			log.debug("first task sent")
-		}
-
 		worker_runloop(shim_ptr)
-	}
-
-	if chan.send(ch, init_task) {
-		log.debug("first task sent")
 	}
 }
