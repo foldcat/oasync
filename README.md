@@ -1,7 +1,7 @@
 # oasync
 
 M:N multithreading for Odin. The end goal is to implement virtual threads that 
-automatically and quickly parallelize tasks across several threads.
+automatically and quickly parallelize tasks across several os threads.
 
 ## usage
 Note that this library is in **PRE ALPHA STATE**. It lacks essential features 
