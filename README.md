@@ -16,25 +16,25 @@ import oa "../oasync"
 import "core:fmt"
 
 child :: proc() {
-	fmt.println("hi from child task")
+    fmt.println("hi from child task")
 }
 
 core :: proc() {
-	fmt.println("test")
-	// spawn a procedure in a virtual thread
-	oa.go(child)
+    fmt.println("test")
+    // spawn a procedure in a virtual thread
+    oa.go(child)
 }
 
 main :: proc() {
-  coord := oa.Coordinator{}
-  cfg := oa.Config {
-    // amount of threads to use
-    worker_count    = 4,
-    // use the main thread as a worker (does not contribute towards worker_count)
-    use_main_thread = true,
-  }
+    coord := oa.Coordinator{}
+    cfg := oa.Config {
+        // amount of threads to use
+        worker_count    = 4,
+        // use the main thread as a worker (does not contribute towards worker_count)
+        use_main_thread = true,
+    }
 
-  // fire off the async runtime
-  oa.init(&coord, cfg, oa.make_task(core))
+    // fire off the async runtime
+    oa.init(&coord, cfg, oa.make_task(core))
 }
 ```
