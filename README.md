@@ -16,13 +16,24 @@ import oa "../oasync"
 import "core:fmt"
 
 child :: proc() {
-    fmt.println("hi from child task")
+    fmt.println("hello from child!")
+}
+
+child2 :: proc(raw_data: rawptr) {
+    data := cast(^string)raw_data
+    fmt.println(data^)
 }
 
 core :: proc() {
-    fmt.println("test")
+    fmt.println("hello from oasync~")
+
     // spawn a procedure in a virtual thread
     oa.go(child)
+
+    // allocated on the heap as the stack gets destroyed
+    // upon function finishes
+    data := new_clone("pass data into childs threads~")
+    oa.go(child2, data)
 }
 
 main :: proc() {
@@ -30,7 +41,8 @@ main :: proc() {
     cfg := oa.Config {
         // amount of threads to use
         worker_count    = 4,
-        // use the main thread as a worker (does not contribute towards worker_count)
+        // use the main thread as a worker 
+        // (does not contribute towards worker_count)
         use_main_thread = true,
     }
 
