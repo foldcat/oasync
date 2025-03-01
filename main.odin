@@ -202,8 +202,8 @@ make_unit_task :: proc(p: proc()) -> Task {
 	return Unit_Task{effect = p}
 }
 
-make_rawptr_task :: proc(p: proc(supply: rawptr)) -> Task {
-	return Rawptr_Task{effect = p}
+make_rawptr_task :: proc(p: proc(supply: rawptr), supply: rawptr) -> Task {
+	return Rawptr_Task{effect = p, supply = supply}
 }
 
 make_task :: proc {
@@ -215,8 +215,8 @@ go_unit :: proc(p: proc()) {
 	spawn_task(make_task(p))
 }
 
-go_rawptr :: proc(p: proc(supply: rawptr)) {
-	spawn_task(make_task(p))
+go_rawptr :: proc(p: proc(supply: rawptr), data: rawptr) {
+	spawn_task(make_task(p, data))
 }
 
 go :: proc {
