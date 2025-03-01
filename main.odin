@@ -9,6 +9,7 @@ import "core:sync"
 import "core:sync/chan"
 import "core:thread"
 import "core:time"
+import "structs"
 
 Rawptr_Task :: struct {
 	// void * generic
@@ -28,6 +29,7 @@ Task :: union {
 
 // assigned to each thread
 Worker :: struct {
+	barrier_ref:  ^structs.Barrier,
 	localq:       queue.Queue(Task),
 	run_next:     Task,
 	timestamp:    time.Tick, // acts as identifier for each worker, should never collide
@@ -56,7 +58,6 @@ Ref_Carrier :: struct {
 	worker:   ^Worker,
 	user_ptr: rawptr,
 }
-
 
 // get worker from context
 get_worker :: proc() -> ^Worker {
@@ -109,8 +110,12 @@ run_task :: proc(t: Task) {
 
 // event loop that every worker runs
 worker_runloop :: proc(t: ^thread.Thread) {
-	log.debug("runloop started")
 	worker := get_worker()
+
+	log.debug("awaiting barrier started")
+	structs.barrier_await(worker.barrier_ref)
+
+	log.debug("runloop started")
 	for {
 		// wipe the arena every loop
 		arena := worker.arena
@@ -226,6 +231,8 @@ init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
 	// set up the global chan
 	log.debug("setting up global channel")
 
+	barrier := structs.make_barrier(cfg.worker_count)
+
 	ch, aerr := chan.create(chan.Chan(Task), context.allocator)
 	if aerr != nil {
 		panic("failed to create channel")
@@ -235,6 +242,8 @@ init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
 	log.debug("setting up loggers")
 	for i in 1 ..= coord.worker_count {
 		worker := Worker{}
+		// load in the barrier
+		worker.barrier_ref = &barrier
 		worker.coordinator = coord
 		append(&coord.workers, worker)
 
@@ -255,6 +264,7 @@ init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
 	// theats the main thread as a worker too
 	if cfg.use_main_thread == true {
 		main_worker := Worker{}
+		main_worker.barrier_ref = &barrier
 		main_worker.coordinator = coord
 		queue.init(&main_worker.localq)
 		arena_alloc := vmem.arena_allocator(&main_worker.arena)
