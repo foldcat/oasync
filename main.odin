@@ -10,8 +10,20 @@ import "core:sync/chan"
 import "core:thread"
 import "core:time"
 
-Task :: struct {
+Rawptr_Task :: struct {
+	// void * generic
+	// sometimes i wish for a more complex type system
+	effect: proc(input: rawptr),
+	supply: rawptr,
+}
+
+Unit_Task :: struct {
 	effect: proc(),
+}
+
+Task :: union {
+	Rawptr_Task,
+	Unit_Task,
 }
 
 // assigned to each thread
@@ -85,7 +97,14 @@ steal :: proc(this: ^Worker) {
 
 // unsafe function: do not use
 run_task :: proc(t: Task) {
-	t.effect()
+	switch tsk in t {
+	case Rawptr_Task:
+		tsk.effect(tsk.supply)
+	case Unit_Task:
+		tsk.effect()
+
+
+	}
 }
 
 // event loop that every worker runs
@@ -174,14 +193,31 @@ setup_thread :: proc(worker: ^Worker) -> ^thread.Thread {
 
 }
 
-make_task :: proc(p: proc()) -> Task {
-	return Task{effect = p}
+make_unit_task :: proc(p: proc()) -> Task {
+	return Unit_Task{effect = p}
 }
 
-go :: proc(p: proc()) {
+make_rawptr_task :: proc(p: proc(supply: rawptr)) -> Task {
+	return Rawptr_Task{effect = p}
+}
+
+make_task :: proc {
+	make_unit_task,
+	make_rawptr_task,
+}
+
+go_unit :: proc(p: proc()) {
 	spawn_task(make_task(p))
 }
 
+go_rawptr :: proc(p: proc(supply: rawptr)) {
+	spawn_task(make_task(p))
+}
+
+go :: proc {
+	go_unit,
+	go_rawptr,
+}
 
 init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
 	log.debug("starting worker system")
