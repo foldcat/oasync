@@ -1,6 +1,5 @@
 package oasync
 
-import "core:container/queue"
 import "core:fmt"
 import "core:log"
 import "core:math/rand"
@@ -27,15 +26,17 @@ Task :: union {
 	Unit_Task,
 }
 
+// 2 ^ 8
+LOCAL_QUEUE_SIZE :: 256
+
 // assigned to each thread
 Worker :: struct {
-	barrier_ref:  ^structs.Barrier,
-	localq:       queue.Queue(Task),
-	run_next:     Task,
-	timestamp:    time.Tick, // acts as identifier for each worker, should never collide
-	coordinator:  ^Coordinator,
-	localq_mutex: sync.Mutex,
-	arena:        vmem.Arena,
+	barrier_ref: ^structs.Barrier,
+	localq:      structs.Queue(Task, LOCAL_QUEUE_SIZE),
+	run_next:    Task,
+	timestamp:   time.Tick, // acts as identifier for each worker, should never collide
+	coordinator: ^Coordinator,
+	arena:       vmem.Arena,
 }
 
 // heart of the async scheduler
@@ -73,25 +74,21 @@ steal :: proc(this: ^Worker) {
 		return
 	}
 
-	sync.mutex_lock(&worker.localq_mutex)
-	defer sync.mutex_unlock(&worker.localq_mutex) // make sure the mutex doesn't get perma locked
 	// we don't steal from queues that doesn't have items
-	queue_length := queue.len(worker.localq)
+	queue_length := structs.queue_length(&worker.localq)
 	if queue_length == 0 {
 		return
 	}
 
-	sync.mutex_lock(&this.localq_mutex)
-	defer sync.mutex_unlock(&this.localq_mutex)
 	// steal half of the text once we find one
 	for i in 1 ..= u64(queue_length / 2) { 	// TODO: need further testing
-		elem, ok := queue.pop_front_safe(&worker.localq)
+		elem, ok := structs.queue_pop(&worker.localq)
 		if !ok {
 			log.error("failed to steal")
 			return
 		}
 
-		queue.push(&this.localq, elem)
+		structs.queue_push(&this.localq, elem)
 	}
 
 }
@@ -122,10 +119,8 @@ worker_runloop :: proc(t: ^thread.Thread) {
 		defer vmem.arena_free_all(&arena)
 
 		// tasks in local queue gets scheduled first
-		sync.mutex_lock(&worker.localq_mutex)
 		//log.debug("pop")
-		tsk, exist := queue.pop_front_safe(&worker.localq)
-		sync.mutex_unlock(&worker.localq_mutex)
+		tsk, exist := structs.queue_pop(&worker.localq)
 		if exist {
 			log.debug("pulled from local queue, running")
 			run_task(tsk)
@@ -163,10 +158,7 @@ worker_runloop :: proc(t: ^thread.Thread) {
 spawn_task :: proc(task: Task) {
 	worker := get_worker()
 
-	sync.mutex_lock(&worker.localq_mutex) // lock the mutex
-	defer sync.mutex_unlock(&worker.localq_mutex)
-
-	queue.append_elem(&worker.localq, task)
+	structs.queue_push(&worker.localq, task)
 }
 
 setup_thread :: proc(worker: ^Worker) -> ^thread.Thread {
@@ -175,7 +167,7 @@ setup_thread :: proc(worker: ^Worker) -> ^thread.Thread {
 	log.debug("setting up thread for", worker.timestamp)
 
 	log.debug("init queue")
-	queue.init(&worker.localq)
+	worker.localq = structs.make_queue(Task, LOCAL_QUEUE_SIZE)
 
 	// weird name to avoid collision
 	thrd := thread.create(worker_runloop) // make a worker thread
@@ -266,7 +258,9 @@ init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
 		main_worker := Worker{}
 		main_worker.barrier_ref = &barrier
 		main_worker.coordinator = coord
-		queue.init(&main_worker.localq)
+
+		main_worker.localq = structs.make_queue(Task, LOCAL_QUEUE_SIZE)
+
 		arena_alloc := vmem.arena_allocator(&main_worker.arena)
 		main_worker.timestamp = time.tick_now()
 
