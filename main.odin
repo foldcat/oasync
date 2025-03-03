@@ -31,7 +31,7 @@ LOCAL_QUEUE_SIZE :: 256
 
 // assigned to each thread
 Worker :: struct {
-	barrier_ref: ^structs.Barrier,
+	barrier_ref: ^sync.Barrier,
 	localq:      structs.Queue(Task, LOCAL_QUEUE_SIZE),
 	run_next:    Task,
 	timestamp:   time.Tick, // acts as identifier for each worker, should never collide
@@ -110,7 +110,7 @@ worker_runloop :: proc(t: ^thread.Thread) {
 	worker := get_worker()
 
 	log.debug("awaiting barrier started")
-	structs.barrier_await(worker.barrier_ref)
+	sync.barrier_wait(worker.barrier_ref)
 
 	log.debug("runloop started")
 	for {
@@ -223,7 +223,8 @@ init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
 	// set up the global chan
 	log.debug("setting up global channel")
 
-	barrier := structs.make_barrier(cfg.worker_count)
+	barrier := sync.Barrier{}
+	sync.barrier_init(&barrier, int(cfg.worker_count))
 
 	ch, aerr := chan.create(chan.Chan(Task), context.allocator)
 	if aerr != nil {
