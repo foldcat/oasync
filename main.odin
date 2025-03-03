@@ -8,7 +8,6 @@ import "core:sync"
 import "core:sync/chan"
 import "core:thread"
 import "core:time"
-import "structs"
 
 Rawptr_Task :: struct {
 	// void * generic
@@ -32,7 +31,7 @@ LOCAL_QUEUE_SIZE :: 256
 // assigned to each thread
 Worker :: struct {
 	barrier_ref: ^sync.Barrier,
-	localq:      structs.Queue(Task, LOCAL_QUEUE_SIZE),
+	localq:      Queue(Task, LOCAL_QUEUE_SIZE),
 	run_next:    Task,
 	timestamp:   time.Tick, // acts as identifier for each worker, should never collide
 	coordinator: ^Coordinator,
@@ -75,20 +74,20 @@ steal :: proc(this: ^Worker) {
 	}
 
 	// we don't steal from queues that doesn't have items
-	queue_length := structs.queue_length(&worker.localq)
+	queue_length := queue_length(&worker.localq)
 	if queue_length == 0 {
 		return
 	}
 
 	// steal half of the text once we find one
 	for i in 1 ..= u64(queue_length / 2) { 	// TODO: need further testing
-		elem, ok := structs.queue_pop(&worker.localq)
+		elem, ok := queue_pop(&worker.localq)
 		if !ok {
 			log.error("failed to steal")
 			return
 		}
 
-		structs.queue_push(&this.localq, elem)
+		queue_push(&this.localq, elem)
 	}
 
 }
@@ -120,7 +119,7 @@ worker_runloop :: proc(t: ^thread.Thread) {
 
 		// tasks in local queue gets scheduled first
 		//log.debug("pop")
-		tsk, exist := structs.queue_pop(&worker.localq)
+		tsk, exist := queue_pop(&worker.localq)
 		if exist {
 			log.debug("pulled from local queue, running")
 			run_task(tsk)
@@ -158,7 +157,7 @@ worker_runloop :: proc(t: ^thread.Thread) {
 spawn_task :: proc(task: Task) {
 	worker := get_worker()
 
-	structs.queue_push(&worker.localq, task)
+	queue_push(&worker.localq, task)
 }
 
 setup_thread :: proc(worker: ^Worker) -> ^thread.Thread {
@@ -167,7 +166,7 @@ setup_thread :: proc(worker: ^Worker) -> ^thread.Thread {
 	log.debug("setting up thread for", worker.timestamp)
 
 	log.debug("init queue")
-	worker.localq = structs.make_queue(Task, LOCAL_QUEUE_SIZE)
+	worker.localq = make_queue(Task, LOCAL_QUEUE_SIZE)
 
 	// weird name to avoid collision
 	thrd := thread.create(worker_runloop) // make a worker thread
@@ -260,7 +259,7 @@ init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
 		main_worker.barrier_ref = &barrier
 		main_worker.coordinator = coord
 
-		main_worker.localq = structs.make_queue(Task, LOCAL_QUEUE_SIZE)
+		main_worker.localq = make_queue(Task, LOCAL_QUEUE_SIZE)
 
 		arena_alloc := vmem.arena_allocator(&main_worker.arena)
 		main_worker.timestamp = time.tick_now()

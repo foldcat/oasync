@@ -1,8 +1,7 @@
-package structs
+package oasync
 
 // lock free queue implementation
 
-import "core:fmt"
 import "core:sync"
 
 // it looks like a duck, it probably behaves like a duck, 
