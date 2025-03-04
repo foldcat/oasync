@@ -32,7 +32,12 @@ core :: proc() {
 
     // allocated on the heap as the stack gets destroyed
     // upon function finishes
-    data := new_clone("pass data into childs threads~")
+
+    // the default allocator have been swapped with an arena allocator,
+    // which frees itself every run
+    // temp_allocator is used here instead as we are passing a pointer from 
+    // one task to another
+    data := new_clone("pass data into childs threads~", context.temp_allocator)
     oa.go(child2, data)
 }
 
