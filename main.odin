@@ -5,7 +5,6 @@ import "core:log"
 import "core:math/rand"
 import vmem "core:mem/virtual"
 import "core:sync"
-import "core:sync/chan"
 import "core:thread"
 import "core:time"
 
@@ -31,7 +30,7 @@ LOCAL_QUEUE_SIZE :: 256
 // assigned to each thread
 Worker :: struct {
 	barrier_ref: ^sync.Barrier,
-	localq:      Queue(Task, LOCAL_QUEUE_SIZE),
+	localq:      Local_Queue(Task, LOCAL_QUEUE_SIZE),
 	run_next:    Task,
 	timestamp:   time.Tick, // acts as identifier for each worker, should never collide
 	coordinator: ^Coordinator,
@@ -42,7 +41,7 @@ Worker :: struct {
 Coordinator :: struct {
 	workers:      [dynamic]Worker, // could do a static sized one but requires too much parapoly to make worth
 	worker_count: u8,
-	globalq:      chan.Chan(Task), // TODO: queue instead
+	globalq:      Global_Queue(Task),
 	search_count: u8, // ATOMIC ONLY!
 }
 
@@ -81,7 +80,7 @@ steal :: proc(this: ^Worker) {
 
 	// steal half of the text once we find one
 	for i in 1 ..= u64(queue_length / 2) { 	// TODO: need further testing
-		elem, ok := queue_pop(&worker.localq)
+		elem, ok := queue_nonlocal_pop(&worker.localq)
 		if !ok {
 			log.error("failed to steal")
 			return
@@ -130,7 +129,7 @@ worker_runloop :: proc(t: ^thread.Thread) {
 		// local queue seems to be empty at this point, take a look 
 		// at the global channel
 		//log.debug("chan recv")
-		tsk, exist = chan.try_recv(worker.coordinator.globalq)
+		tsk, exist = gqueue_pop(&worker.coordinator.globalq)
 		if exist {
 			log.debug("got item from global channel")
 			run_task(tsk)
@@ -225,11 +224,7 @@ init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
 	barrier := sync.Barrier{}
 	sync.barrier_init(&barrier, int(cfg.worker_count))
 
-	ch, aerr := chan.create(chan.Chan(Task), context.allocator)
-	if aerr != nil {
-		panic("failed to create channel")
-	}
-	coord.globalq = ch
+	coord.globalq = make_gqueue(Task)
 
 	log.debug("setting up loggers")
 	for i in 1 ..= coord.worker_count {
@@ -247,11 +242,8 @@ init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
 	// chan send freezes indefinitely when nothing is listening to it
 	// thus it is placed here
 	log.debug("sending first task")
-	if chan.send(coord.globalq, init_task) {
-		log.debug("first task sent")
-	} else {
-		panic("failed to fire off the first task")
-	}
+
+	gqueue_push(&coord.globalq, init_task)
 
 	// theats the main thread as a worker too
 	if cfg.use_main_thread == true {
