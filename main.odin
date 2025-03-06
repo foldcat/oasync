@@ -203,6 +203,14 @@ spawn_blocking_task :: proc(task: Task) {
 	}
 }
 
+spawn_unsafe_task :: proc(task: Task, coord: ^Coordinator) {
+	gqueue_push(&coord.globalq, task)
+}
+
+spawn_unsafe_blocking_task :: proc(task: Task, coord: ^Coordinator) {
+	gqueue_push(&coord.global_blockingq, task)
+}
+
 setup_thread :: proc(worker: ^Worker) -> ^thread.Thread {
 	worker.timestamp = time.tick_now()
 
@@ -269,6 +277,32 @@ gob_rawptr :: proc(p: proc(supply: rawptr), data: rawptr) {
 gob :: proc {
 	gob_unit,
 	gob_rawptr,
+}
+
+unsafe_go_unit :: proc(p: proc(), coord: ^Coordinator) {
+	spawn_unsafe_task(make_task(p), coord)
+}
+
+unsafe_go_rawptr :: proc(p: proc(supply: rawptr), data: rawptr, coord: ^Coordinator) {
+	spawn_unsafe_task(make_task(p, data), coord)
+}
+
+unsafe_go :: proc {
+	unsafe_go_unit,
+	unsafe_go_rawptr,
+}
+
+unsafe_gob_unit :: proc(p: proc(), coord: ^Coordinator) {
+	spawn_unsafe_blocking_task(make_task(p), coord)
+}
+
+unsafe_gob_rawptr :: proc(p: proc(supply: rawptr), data: rawptr, coord: ^Coordinator) {
+	spawn_unsafe_blocking_task(make_task(p, data), coord)
+}
+
+unsafe_gob :: proc {
+	unsafe_gob_unit,
+	unsafe_gob_rawptr,
 }
 
 init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
