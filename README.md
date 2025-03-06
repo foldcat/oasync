@@ -129,6 +129,15 @@ unsafe_gob(task, &coord)
 task_witharg :: proc(arg: rawptr) {}
 unsafe_go(task, input, &coord)
 unsafe_gob(task, input, &coord)
+
+// this really isn't unsafe in the sense that it might cause crashes:
+// this is just slower than dispatching normally...
+// avoid this as much as possible!
+
+// if these procedures are called before initializing the coordinator, 
+// they will be ran when the coordinator gets initialized
+// note that this might cause the procedure passed in oa.init 
+// to not be run before anything does!
 ```
 
 ### context system
