@@ -32,7 +32,6 @@ cfg := oa.Config {
   blocking_worker_count = 2,
 
   // use the main thread as a worker 
-  // note that does not contribute towards worker_count
   // this prevents the program from exiting immediately
   use_main_thread       = true,
 }
