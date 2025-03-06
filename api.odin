@@ -8,6 +8,9 @@ go_rawptr :: proc(p: proc(supply: rawptr), data: rawptr) {
 	spawn_task(make_task(p, data))
 }
 
+/* 
+spawn tasks in a virtual thread
+*/
 go :: proc {
 	go_unit,
 	go_rawptr,
@@ -21,6 +24,11 @@ gob_rawptr :: proc(p: proc(supply: rawptr), data: rawptr) {
 	spawn_blocking_task(make_task(p, data))
 }
 
+/* 
+spawn tasks that will be run in blocking workers
+when blocking_worker_count is zero, this procedure is noop 
+and may cause memory leaks
+*/
 gob :: proc {
 	gob_unit,
 	gob_rawptr,
@@ -34,6 +42,11 @@ unsafe_go_rawptr :: proc(p: proc(supply: rawptr), data: rawptr, coord: ^Coordina
 	spawn_unsafe_task(make_task(p, data), coord)
 }
 
+/* 
+used when attempting to spawn tasks outside of a thread 
+managed by a coordinator, comes with performance penalities
+and does not cause instabilities
+*/
 unsafe_go :: proc {
 	unsafe_go_unit,
 	unsafe_go_rawptr,
@@ -47,11 +60,19 @@ unsafe_gob_rawptr :: proc(p: proc(supply: rawptr), data: rawptr, coord: ^Coordin
 	spawn_unsafe_blocking_task(make_task(p, data), coord)
 }
 
+/* 
+used when attempting to spawn blocking tasks outside of a thread 
+managed by a coordinator, comes with performance penalities
+and does not cause instabilities
+*/
 unsafe_gob :: proc {
 	unsafe_gob_unit,
 	unsafe_gob_rawptr,
 }
 
+/* 
+initialize a coordinator, which stores the state for spawning different tasks
+*/
 init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
 	_init(coord, cfg, init_task)
 }

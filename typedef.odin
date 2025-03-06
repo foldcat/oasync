@@ -43,26 +43,41 @@ Task :: union {
 	Unit_Task,
 }
 
-// heart of the async scheduler
+/* 
+coordinates workers for dispatching virtual threads and 
+executing tasks
+should not be accessed
+*/
 Coordinator :: struct {
-	workers:               [dynamic]Worker, // could do a static sized one but requires too much parapoly to make worth
+	workers:               [dynamic]Worker,
 	worker_count:          u8,
 	blocking_workers:      [dynamic]Worker,
 	blocking_worker_count: u8,
 	globalq:               Global_Queue(Task),
 	global_blockingq:      Global_Queue(Task),
-	search_count:          u8, // ATOMIC ONLY!
+	search_count:          u8,
 }
 
+/*
+controls the behavior of a coordinator,
+mutating this upon calling init has no effect 
+on its behavior
+*/
 Config :: struct {
+	// amount of threads to run tasks
 	worker_count:          u8,
+	// amount of threads to run blocking tasks
 	blocking_worker_count: u8,
+	// use the main thread as a worker 
+	// prevents immediate exit of a program
 	use_main_thread:       bool,
 }
 
-// injected into context.user_ptr, overriding its content
-// fear not, we provide a field named user_ptr which you can access 
-// and use at your own pleasure
+/*
+injected into context.user_ptr, overriding its content
+the user_ptr field can be modified by an user in any way,
+however, the worker field should not be accessed
+*/
 Ref_Carrier :: struct {
 	worker:   ^Worker,
 	user_ptr: rawptr,
