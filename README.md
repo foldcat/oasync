@@ -15,9 +15,8 @@ import oa "../oasync"
 ```
 
 ### seting up the coordinator
-Coordinators are the heart of Oasync!
 ```odin
-// make the coordinator
+// coordinators are the heart of oasync!
 coord := oa.Coordinator{}
 
 // the following examples will use this configuration:
