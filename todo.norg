@@ -11,7 +11,7 @@
     - ( ) lock free queue implementation
     -- (x) prototype 
     -- ( ) proper understanding of it
-    - ( ) blocking thread pool
+    - (x) blocking thread pool
     - ( ) task stealing
     -- (x) prototype
     -- ( ) aquire atomic once only while stealing multiple tasks

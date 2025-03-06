@@ -27,6 +27,11 @@ Task :: union {
 // 2 ^ 8
 LOCAL_QUEUE_SIZE :: 256
 
+Worker_Type :: enum {
+	Generic,
+	Blocking,
+}
+
 // assigned to each thread
 Worker :: struct {
 	barrier_ref: ^sync.Barrier,
@@ -35,19 +40,24 @@ Worker :: struct {
 	timestamp:   time.Tick, // acts as identifier for each worker, should never collide
 	coordinator: ^Coordinator,
 	arena:       vmem.Arena,
+	type:        Worker_Type,
 }
 
 // heart of the async scheduler
 Coordinator :: struct {
-	workers:      [dynamic]Worker, // could do a static sized one but requires too much parapoly to make worth
-	worker_count: u8,
-	globalq:      Global_Queue(Task),
-	search_count: u8, // ATOMIC ONLY!
+	workers:               [dynamic]Worker, // could do a static sized one but requires too much parapoly to make worth
+	worker_count:          u8,
+	blocking_workers:      [dynamic]Worker,
+	blocking_worker_count: u8,
+	globalq:               Global_Queue(Task),
+	global_blockingq:      Global_Queue(Task),
+	search_count:          u8, // ATOMIC ONLY!
 }
 
 Config :: struct {
-	worker_count:    u8,
-	use_main_thread: bool,
+	worker_count:          u8,
+	blocking_worker_count: u8,
+	use_main_thread:       bool,
 }
 
 // injected into context.user_ptr, overriding its content
@@ -66,7 +76,20 @@ get_worker :: proc() -> ^Worker {
 
 steal :: proc(this: ^Worker) {
 	// steal from a random worker
-	worker := rand.choice(this.coordinator.workers[:])
+	worker: Worker
+
+	switch this.type {
+	case .Generic:
+		// generic workers should not be allowed to steal blocking task
+		worker = rand.choice(this.coordinator.workers[:])
+	case .Blocking:
+		if rand.float32() > 0.5 {
+			worker = rand.choice(this.coordinator.workers[:])
+		} else {
+			worker = rand.choice(this.coordinator.blocking_workers[:])
+		}
+	}
+
 	if worker.timestamp == this.timestamp {
 		// same id, and don't steal from self,
 		return
@@ -98,8 +121,6 @@ run_task :: proc(t: Task) {
 		tsk.effect(tsk.supply)
 	case Unit_Task:
 		tsk.effect()
-
-
 	}
 }
 
@@ -124,6 +145,17 @@ worker_runloop :: proc(t: ^thread.Thread) {
 			run_task(tsk)
 
 			continue
+		}
+
+		// here are for a blocking worker 
+		if worker.type == .Blocking {
+			tsk, exist = gqueue_pop(&worker.coordinator.global_blockingq)
+			if exist {
+				log.debug("got item from global blocking channel")
+				run_task(tsk)
+
+				continue
+			}
 		}
 
 		// local queue seems to be empty at this point, take a look 
@@ -157,6 +189,18 @@ spawn_task :: proc(task: Task) {
 	worker := get_worker()
 
 	queue_push(&worker.localq, task)
+}
+
+// blocking tasks are pushed onto a queue
+spawn_blocking_task :: proc(task: Task) {
+	worker := get_worker()
+
+	switch worker.type {
+	case .Generic:
+		gqueue_push(&worker.coordinator.global_blockingq, task)
+	case .Blocking:
+		queue_push(&worker.localq, task)
+	}
 }
 
 setup_thread :: proc(worker: ^Worker) -> ^thread.Thread {
@@ -214,29 +258,56 @@ go :: proc {
 	go_rawptr,
 }
 
+gob_unit :: proc(p: proc()) {
+	spawn_blocking_task(make_task(p))
+}
+
+gob_rawptr :: proc(p: proc(supply: rawptr), data: rawptr) {
+	spawn_blocking_task(make_task(p, data))
+}
+
+gob :: proc {
+	gob_unit,
+	gob_rawptr,
+}
+
 init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
 	log.debug("starting worker system")
 	coord.worker_count = cfg.worker_count
+	coord.blocking_worker_count = cfg.blocking_worker_count
 
 	// set up the global chan
 	log.debug("setting up global channel")
 
 	barrier := sync.Barrier{}
-	sync.barrier_init(&barrier, int(cfg.worker_count))
+	sync.barrier_init(&barrier, int(cfg.worker_count + cfg.blocking_worker_count))
 
 	coord.globalq = make_gqueue(Task)
 
-	log.debug("setting up loggers")
 	for i in 1 ..= coord.worker_count {
 		worker := Worker{}
 		// load in the barrier
 		worker.barrier_ref = &barrier
 		worker.coordinator = coord
+		worker.type = Worker_Type.Generic
 		append(&coord.workers, worker)
 
 		thrd := setup_thread(&worker)
 		thread.start(thrd)
 		log.debug("started", i, "th worker")
+	}
+
+	for i in 1 ..= coord.blocking_worker_count {
+		worker := Worker{}
+		// load in the barrier
+		worker.barrier_ref = &barrier
+		worker.coordinator = coord
+		worker.type = Worker_Type.Blocking
+		append(&coord.workers, worker)
+
+		thrd := setup_thread(&worker)
+		thread.start(thrd)
+		log.debug("started", i, "th blocking worker")
 	}
 
 	// chan send freezes indefinitely when nothing is listening to it
