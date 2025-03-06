@@ -7,16 +7,15 @@ automatically and quickly parallelize tasks across several os threads.
 Note that this library is in **PRE ALPHA STATE**. It lacks essential features 
 and may randomly cause segmented fault.
 
-However, please test out the library and report issues you have encountered.
+However, please test it out and provide feedbacks and bug reports!
 
 In the examples below, we will be importing Oasync as so: 
 ```odin 
 import oa "../oasync"
 ```
 
-### setup the coordinator
-To use Oasync, a coordinator is required. It is the heart of the scheduler.
-You will also need a config
+### seting up the coordinator
+Coordinators are the heart of Oasync!
 ```odin
 // make the coordinator
 coord := oa.Coordinator{}
@@ -45,6 +44,9 @@ core :: proc() {
   // starting point!
 }
 
+// multiple coordinator can be spawned at the same time 
+// as they are self contained 
+// coordinators will not interract with each other
 oa.init(&coord, cfg, oa.make_task(core))
 ```
 
