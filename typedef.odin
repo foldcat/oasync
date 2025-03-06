@@ -4,6 +4,7 @@ import vmem "core:mem/virtual"
 import "core:sync"
 
 // 2 ^ 8
+@(private)
 LOCAL_QUEUE_SIZE :: 256
 
 @(private)
