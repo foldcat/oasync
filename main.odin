@@ -37,7 +37,7 @@ Worker :: struct {
 	barrier_ref: ^sync.Barrier,
 	localq:      Local_Queue(Task, LOCAL_QUEUE_SIZE),
 	run_next:    Task,
-	timestamp:   time.Tick, // acts as identifier for each worker, should never collide
+	id:          u8,
 	coordinator: ^Coordinator,
 	arena:       vmem.Arena,
 	type:        Worker_Type,
@@ -90,7 +90,7 @@ steal :: proc(this: ^Worker) {
 		}
 	}
 
-	if worker.timestamp == this.timestamp {
+	if worker.id == this.id {
 		// same id, and don't steal from self,
 		return
 	}
@@ -212,9 +212,7 @@ spawn_unsafe_blocking_task :: proc(task: Task, coord: ^Coordinator) {
 }
 
 setup_thread :: proc(worker: ^Worker) -> ^thread.Thread {
-	worker.timestamp = time.tick_now()
-
-	log.debug("setting up thread for", worker.timestamp)
+	log.debug("setting up thread for", worker.id)
 
 	log.debug("init queue")
 	worker.localq = make_queue(Task, LOCAL_QUEUE_SIZE)
@@ -310,6 +308,8 @@ init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
 	coord.worker_count = cfg.worker_count
 	coord.blocking_worker_count = cfg.blocking_worker_count
 
+	id_gen: u8
+
 	// set up the global chan
 	log.debug("setting up global channel")
 
@@ -320,6 +320,10 @@ init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
 
 	for i in 1 ..= coord.worker_count {
 		worker := Worker{}
+
+		worker.id = id_gen
+		id_gen += 1
+
 		// load in the barrier
 		worker.barrier_ref = &barrier
 		worker.coordinator = coord
@@ -333,6 +337,10 @@ init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
 
 	for i in 1 ..= coord.blocking_worker_count {
 		worker := Worker{}
+
+		worker.id = id_gen
+		id_gen += 1
+
 		// load in the barrier
 		worker.barrier_ref = &barrier
 		worker.coordinator = coord
@@ -359,7 +367,9 @@ init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
 		main_worker.localq = make_queue(Task, LOCAL_QUEUE_SIZE)
 
 		arena_alloc := vmem.arena_allocator(&main_worker.arena)
-		main_worker.timestamp = time.tick_now()
+
+		main_worker.id = id_gen
+		id_gen += 1
 
 		context.allocator = arena_alloc
 
