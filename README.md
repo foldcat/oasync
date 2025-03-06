@@ -110,6 +110,22 @@ for i in 1 ..= 4 {
 // are trying their best so don't judge~
 ```
 
+### unsafe dispatching 
+```odin
+// sometimes you are in threads not managed by the coordinator,
+// but you still want to spawn virtual tasks
+
+// you can do this:
+task :: proc() {}
+// pass in the coordinator into the last argument!
+unsafe_go(task, &coord)
+unsafe_gob(task, &coord)
+
+task_witharg :: proc(arg: rawptr) {}
+unsafe_go(task, input, &coord)
+unsafe_gob(task, input, &coord)
+```
+
 ### context system
 ```odin 
 // we inject a pointer to a struct named Ref_Carrier into context.user_ptr
