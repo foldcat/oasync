@@ -5,7 +5,7 @@ automatically and quickly parallelize tasks across several os threads.
 
 ## usage
 Note that this library is in **PRE ALPHA STATE**. It lacks essential features 
-and may randomly cause segmented fault.
+and may randomly cause segmented faults.
 
 However, please test it out and provide feedbacks and bug reports!
 
