@@ -104,6 +104,11 @@ for i in 1 ..= 4 {
 // blocking workers are a seprate pool of workers, this will make sure 
 // there are still rooms for non blocking tasks out there to run!
 
+
+blocking_child_witharg :: proc(arg: rawptr) {}
+// note that you can also pass in a rawptr: 
+oa.gob(blocking_child_witharg, input)
+
 // don't worry, they will still be used to perform non-blocking tasks 
 // when there are no blocking tasks! 
 // of course, this is slightly slower than generic workers, but they 
