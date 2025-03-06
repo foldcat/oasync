@@ -1,3 +1,4 @@
+#+private
 package oasync
 
 import "core:sync"

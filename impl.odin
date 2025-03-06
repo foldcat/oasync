@@ -1,3 +1,4 @@
+#+private
 package oasync
 
 import "core:fmt"
@@ -7,66 +8,6 @@ import vmem "core:mem/virtual"
 import "core:sync"
 import "core:thread"
 import "core:time"
-
-Rawptr_Task :: struct {
-	// void * generic
-	// sometimes i wish for a more complex type system
-	effect: proc(input: rawptr),
-	supply: rawptr,
-}
-
-Unit_Task :: struct {
-	effect: proc(),
-}
-
-Task :: union {
-	Rawptr_Task,
-	Unit_Task,
-}
-
-// 2 ^ 8
-LOCAL_QUEUE_SIZE :: 256
-
-Worker_Type :: enum {
-	Generic,
-	Blocking,
-}
-
-// assigned to each thread
-Worker :: struct {
-	barrier_ref: ^sync.Barrier,
-	localq:      Local_Queue(Task, LOCAL_QUEUE_SIZE),
-	run_next:    Task,
-	id:          u8,
-	coordinator: ^Coordinator,
-	arena:       vmem.Arena,
-	type:        Worker_Type,
-}
-
-// heart of the async scheduler
-Coordinator :: struct {
-	workers:               [dynamic]Worker, // could do a static sized one but requires too much parapoly to make worth
-	worker_count:          u8,
-	blocking_workers:      [dynamic]Worker,
-	blocking_worker_count: u8,
-	globalq:               Global_Queue(Task),
-	global_blockingq:      Global_Queue(Task),
-	search_count:          u8, // ATOMIC ONLY!
-}
-
-Config :: struct {
-	worker_count:          u8,
-	blocking_worker_count: u8,
-	use_main_thread:       bool,
-}
-
-// injected into context.user_ptr, overriding its content
-// fear not, we provide a field named user_ptr which you can access 
-// and use at your own pleasure
-Ref_Carrier :: struct {
-	worker:   ^Worker,
-	user_ptr: rawptr,
-}
 
 // get worker from context
 get_worker :: proc() -> ^Worker {
@@ -251,59 +192,7 @@ make_task :: proc {
 	make_rawptr_task,
 }
 
-go_unit :: proc(p: proc()) {
-	spawn_task(make_task(p))
-}
-
-go_rawptr :: proc(p: proc(supply: rawptr), data: rawptr) {
-	spawn_task(make_task(p, data))
-}
-
-go :: proc {
-	go_unit,
-	go_rawptr,
-}
-
-gob_unit :: proc(p: proc()) {
-	spawn_blocking_task(make_task(p))
-}
-
-gob_rawptr :: proc(p: proc(supply: rawptr), data: rawptr) {
-	spawn_blocking_task(make_task(p, data))
-}
-
-gob :: proc {
-	gob_unit,
-	gob_rawptr,
-}
-
-unsafe_go_unit :: proc(p: proc(), coord: ^Coordinator) {
-	spawn_unsafe_task(make_task(p), coord)
-}
-
-unsafe_go_rawptr :: proc(p: proc(supply: rawptr), data: rawptr, coord: ^Coordinator) {
-	spawn_unsafe_task(make_task(p, data), coord)
-}
-
-unsafe_go :: proc {
-	unsafe_go_unit,
-	unsafe_go_rawptr,
-}
-
-unsafe_gob_unit :: proc(p: proc(), coord: ^Coordinator) {
-	spawn_unsafe_blocking_task(make_task(p), coord)
-}
-
-unsafe_gob_rawptr :: proc(p: proc(supply: rawptr), data: rawptr, coord: ^Coordinator) {
-	spawn_unsafe_blocking_task(make_task(p, data), coord)
-}
-
-unsafe_gob :: proc {
-	unsafe_gob_unit,
-	unsafe_gob_rawptr,
-}
-
-init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
+_init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
 	log.debug("starting worker system")
 	coord.worker_count = cfg.worker_count
 	coord.blocking_worker_count = cfg.blocking_worker_count
