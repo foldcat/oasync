@@ -136,6 +136,7 @@ spawn_task :: proc(task: Task) {
 			item, ok := queue_pop(&worker.localq)
 			gqueue_push(&worker.coordinator.globalq, item)
 		}
+		gqueue_push(&worker.coordinator.globalq, task)
 	}
 }
 
@@ -147,7 +148,15 @@ spawn_blocking_task :: proc(task: Task) {
 	case .Generic:
 		gqueue_push(&worker.coordinator.global_blockingq, task)
 	case .Blocking:
-		queue_push(&worker.localq, task)
+		if !queue_push(&worker.localq, task) {
+			// handle pushing to global queue
+			// push half of it
+			for i in 1 ..= queue_length(&worker.localq) / 2 {
+				item, ok := queue_pop(&worker.localq)
+				gqueue_push(&worker.coordinator.global_blockingq, item)
+			}
+			gqueue_push(&worker.coordinator.global_blockingq, task)
+		}
 	}
 }
 
