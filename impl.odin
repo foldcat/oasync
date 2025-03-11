@@ -129,7 +129,14 @@ worker_runloop :: proc(t: ^thread.Thread) {
 spawn_task :: proc(task: Task) {
 	worker := get_worker()
 
-	queue_push(&worker.localq, task)
+	if !queue_push(&worker.localq, task) {
+		// handle pushing to global queue
+		// push half of it
+		for i in 1 ..= queue_length(&worker.localq) / 2 {
+			item, ok := queue_pop(&worker.localq)
+			gqueue_push(&worker.coordinator.globalq, item)
+		}
+	}
 }
 
 // blocking tasks are pushed onto a queue
