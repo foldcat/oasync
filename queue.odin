@@ -75,7 +75,7 @@ queue_nonlocal_pop :: proc(q: ^Local_Queue($T, $S)) -> (result: T, ok: bool) {
 		head := sync.atomic_load_explicit(&q.head, sync.Atomic_Memory_Order.Acquire)
 
 		// ONLY thread that updates this cell
-		tail := sync.atomic_load_explicit(&q.tail, sync.Atomic_Memory_Order.Relaxed)
+		tail := sync.atomic_load_explicit(&q.tail, sync.Atomic_Memory_Order.Acquire)
 
 		if head == tail {
 			// ok init as false
