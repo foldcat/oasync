@@ -5,9 +5,9 @@ automatically and quickly parallelize tasks across several os threads.
 
 ## notice
 
-My exam is coming soon, expect fewer updates.
+Exam extended, and I'm failing it.
 
-Active development will resume mid April.
+Active development may resume early May.
 
 ## usage
 Note that this library is in **PRE ALPHA STATE**. It lacks essential features 
