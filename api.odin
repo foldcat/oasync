@@ -102,7 +102,7 @@ init_oa :: proc(
 	max_blocking := 1,
 	use_main_thread := true,
 	init_fn: proc(),
-) -> ^Coordinator {
+) {
 	mworkers: u8 = cast(u8)max_workers
 	mblocking: u8 = cast(u8)max_blocking
 
@@ -119,5 +119,4 @@ init_oa :: proc(
 	init_task := make_task(init_fn)
 
 	_init(coord, cfg, init_task)
-	return coord
 }
