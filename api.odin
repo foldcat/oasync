@@ -73,7 +73,7 @@ unsafe_gob :: proc {
 }
 
 /*
-starts a coordinator based on arguments passed in, and returns it 
+starts a coordinator based on arguments passed in
 
 coord: you are responisble for providing a coordinator, note 
 that you should not edit any fields ot the coordinator and simply 
