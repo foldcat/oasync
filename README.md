@@ -3,11 +3,7 @@
 M:N multithreading for Odin. The end goal is to implement virtual threads that 
 automatically and quickly parallelize tasks across several os threads.
 
-## notice
-
-Exam extended, and I'm failing it.
-
-Active development may resume early May.
+Now back in active development!
 
 ## usage
 Note that this library is in **PRE ALPHA STATE**. It lacks essential features 

@@ -1,5 +1,7 @@
 package oasync
 
+import "core:os"
+
 go_unit :: proc(p: proc()) {
 	spawn_task(make_task(p))
 }
@@ -68,6 +70,19 @@ and does not cause instabilities
 unsafe_gob :: proc {
 	unsafe_gob_unit,
 	unsafe_gob_rawptr,
+}
+
+/*
+starts a coordinator based on arguments passed in:
+
+max_workers (default: 0) dictates maximum amount of threads to use 
+for the scheduler, leave it at 0 to use os.processor_core_count()
+as it's value
+
+
+*/
+init_coord :: proc(max_workers := 0, max_blocking := 0) {
+
 }
 
 /* 
