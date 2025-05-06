@@ -16,38 +16,20 @@ In the examples below, we will be importing Oasync as so:
 import oa "../oasync"
 ```
 
-### seting up the coordinator
+### initializing oasync runtime
 ```odin
-// coordinators are the heart of oasync!
-coord := oa.Coordinator{}
-
-// the following examples will use this configuration:
-// it will be using
-// 4 (generic worker) + 2 (blocking worker) + 1 (main thread) = 7 threads
-
-cfg := oa.Config {
-  // amount of threads to use
-  worker_count          = 4,
-
-  // amount of threads to use for blocking
-  blocking_worker_count = 2,
-
-  // use the main thread as a worker 
-  // this prevents the program from exiting immediately
-  use_main_thread       = true,
-}
-```
-
-### fire off the first task
-```odin 
 core :: proc() {
-  // starting point!
+	fmt.println("test")
 }
 
-// multiple coordinator can be spawned at the same time 
-// as they are self contained 
-// coordinators will not interract with each other
-oa.init(&coord, cfg, oa.make_task(core))
+main :: proc() {
+    // create your own coordinator, do not edit any fields of it
+	coord: oa.Coordinator
+
+    // fire off the oasync runtime immediately
+    // see docstrings for extra options
+	oa.init_oa(&coord, init_fn = core)
+}
 ```
 
 ###  running a virtual task 

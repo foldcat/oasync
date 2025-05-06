@@ -73,21 +73,51 @@ unsafe_gob :: proc {
 }
 
 /*
-starts a coordinator based on arguments passed in:
+starts a coordinator based on arguments passed in, and returns it 
 
-max_workers (default: 0) dictates maximum amount of threads to use 
+coord: you are responisble for providing a coordinator, note 
+that you should not edit any fields ot the coordinator and simply 
+leave it as is
+
+max_workers: maximum amount of threads to use 
 for the scheduler, leave it at 0 to use os.processor_core_count()
 as it's value
 
+max_blocking: the maximum amount of threads 
+to be used for blocking operations, leaving it to 0 disables blocking 
+tasks, note that firing off a blocking task with max_blocking set to 0
+will cause memory leaks and said task will not be executed
+thread used by max_blocking does not countribute towards max_workers, 
+but this behavior will be changed in future updates
 
+use_main_thread: when true, this procedure will be blocking, instead of 
+yielding immediately to grant control back to the thread executing 
+this procedure
+
+init_fn: the first function to execute when oasync is initialized
 */
-init_coord :: proc(max_workers := 0, max_blocking := 0) {
+init_oa :: proc(
+	coord: ^Coordinator,
+	max_workers := 0,
+	max_blocking := 1,
+	use_main_thread := true,
+	init_fn: proc(),
+) -> ^Coordinator {
+	mworkers: u8 = cast(u8)max_workers
+	mblocking: u8 = cast(u8)max_blocking
 
-}
+	if max_workers == 0 {
+		mworkers = cast(u8)os.processor_core_count()
+	}
 
-/* 
-initialize a coordinator, which stores the state for spawning different tasks
-*/
-init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
+	cfg := Config {
+		worker_count          = mworkers,
+		blocking_worker_count = mblocking,
+		use_main_thread       = use_main_thread,
+	}
+
+	init_task := make_task(init_fn)
+
 	_init(coord, cfg, init_task)
+	return coord
 }
