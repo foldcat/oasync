@@ -2,28 +2,11 @@ package oasync
 
 import "core:os"
 
-go_unit :: proc(p: proc()) {
-	spawn_task(make_task(p))
-}
-
-go_rawptr :: proc(p: proc(supply: rawptr), data: rawptr) {
-	spawn_task(make_task(p, data))
-}
-
 /* 
 spawn tasks in a virtual thread
 */
-go :: proc {
-	go_unit,
-	go_rawptr,
-}
-
-gob_unit :: proc(p: proc()) {
-	spawn_blocking_task(make_task(p))
-}
-
-gob_rawptr :: proc(p: proc(supply: rawptr), data: rawptr) {
-	spawn_blocking_task(make_task(p, data))
+go :: proc(p: proc(_: rawptr) -> Behavior, data: rawptr = nil) {
+	spawn_task(make_task(p, data))
 }
 
 /* 
@@ -31,17 +14,8 @@ spawn tasks that will be run in blocking workers
 when blocking_worker_count is zero, this procedure is noop 
 and may cause memory leaks
 */
-gob :: proc {
-	gob_unit,
-	gob_rawptr,
-}
-
-unsafe_go_unit :: proc(p: proc(), coord: ^Coordinator) {
-	spawn_unsafe_task(make_task(p), coord)
-}
-
-unsafe_go_rawptr :: proc(p: proc(supply: rawptr), data: rawptr, coord: ^Coordinator) {
-	spawn_unsafe_task(make_task(p, data), coord)
+gob :: proc(p: proc(_: rawptr) -> Behavior, data: rawptr = nil) {
+	spawn_blocking_task(make_task(p, data))
 }
 
 /* 
@@ -49,17 +23,8 @@ used when attempting to spawn tasks outside of a thread
 managed by a coordinator, comes with performance penalities
 and does not cause instabilities
 */
-unsafe_go :: proc {
-	unsafe_go_unit,
-	unsafe_go_rawptr,
-}
-
-unsafe_gob_unit :: proc(p: proc(), coord: ^Coordinator) {
-	spawn_unsafe_blocking_task(make_task(p), coord)
-}
-
-unsafe_gob_rawptr :: proc(p: proc(supply: rawptr), data: rawptr, coord: ^Coordinator) {
-	spawn_unsafe_blocking_task(make_task(p, data), coord)
+unsafe_go :: proc(coord: ^Coordinator, p: proc(_: rawptr) -> Behavior, data: rawptr = nil) {
+	spawn_unsafe_task(make_task(p, data), coord)
 }
 
 /* 
@@ -67,16 +32,15 @@ used when attempting to spawn blocking tasks outside of a thread
 managed by a coordinator, comes with performance penalities
 and does not cause instabilities
 */
-unsafe_gob :: proc {
-	unsafe_gob_unit,
-	unsafe_gob_rawptr,
+unsafe_gob :: proc(coord: ^Coordinator, p: proc(_: rawptr) -> Behavior, data: rawptr = nil) {
+	spawn_unsafe_blocking_task(make_task(p, data), coord)
 }
 
 /*
 starts a coordinator based on arguments passed in
 
 coord: you are responisble for providing a coordinator, note 
-that you should not edit any fields ot the coordinator and simply 
+that you should not edit any fields of the coordinator and simply 
 leave it as is
 
 max_workers: maximum amount of threads to use 
@@ -101,7 +65,8 @@ init_oa :: proc(
 	max_workers := 0,
 	max_blocking := 1,
 	use_main_thread := true,
-	init_fn: proc(),
+	init_fn: proc(_: rawptr) -> Behavior,
+	init_fn_arg: rawptr = nil,
 ) {
 	mworkers: u8 = cast(u8)max_workers
 	mblocking: u8 = cast(u8)max_blocking
@@ -116,7 +81,7 @@ init_oa :: proc(
 		use_main_thread       = use_main_thread,
 	}
 
-	init_task := make_task(init_fn)
+	init_task := make_task(init_fn, init_fn_arg)
 
 	_init(coord, cfg, init_task)
 }

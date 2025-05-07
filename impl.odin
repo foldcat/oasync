@@ -55,13 +55,15 @@ steal :: proc(this: ^Worker) {
 
 }
 
-// unsafe function: do not use
 run_task :: proc(t: Task) {
-	switch tsk in t {
-	case Rawptr_Task:
-		tsk.effect(tsk.supply)
-	case Unit_Task:
-		tsk.effect()
+	beh := t.effect(t.supply)
+	switch behavior in beh {
+	case B_None:
+	// do nothing
+	case B_Cb:
+		go(behavior.effect, behavior.supply)
+	case B_Cbb:
+		gob(behavior.effect, behavior.supply)
 	}
 }
 
@@ -195,17 +197,8 @@ setup_thread :: proc(worker: ^Worker) -> ^thread.Thread {
 
 }
 
-make_unit_task :: proc(p: proc()) -> Task {
-	return Unit_Task{effect = p}
-}
-
-make_rawptr_task :: proc(p: proc(supply: rawptr), supply: rawptr) -> Task {
-	return Rawptr_Task{effect = p, supply = supply}
-}
-
-make_task :: proc {
-	make_unit_task,
-	make_rawptr_task,
+make_task :: proc(p: proc(_: rawptr) -> Behavior, data: rawptr) -> Task {
+	return Task{effect = p, supply = data}
 }
 
 _init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {

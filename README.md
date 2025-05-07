@@ -11,131 +11,206 @@ and may randomly cause segmented faults.
 
 However, please test it out and provide feedbacks and bug reports!
 
-In the examples below, we will be importing Oasync as so: 
+In the examples below, we will be importing oasync as so: 
 ```odin 
 import oa "../oasync"
 ```
 
+Besides the walkthorugh, I **HEAVILY** recommend doing `odin doc .` in the 
+root directory of oasync to read the API documentation. The following 
+walkthorugh does not cover every procedure and their options.
+
 ### initializing oasync runtime
+To use oasync, we first have to initialize it.
 ```odin
-core :: proc() {
+main :: proc() {
+	coord: oa.Coordinator
+	oa.init_oa(
+    &coord, 
+    init_fn_arg = nil,
+    init_fn = core,
+    max_workers = 4,
+    max_blocking = 2,
+    use_main_thread = true,
+  )
+}
+
+core :: proc(_: rawptr) -> oa.Behavior {
 	fmt.println("test")
+	return oa.B_None{}
+}
+```
+
+### dissection
+This may look intimidating at first, but it is quite simple. 
+Let's dissect it.
+
+#### initializing
+```odin
+// entry point of our program
+main :: proc() {
+    // create a coordinator, we may use it later
+	coord: oa.Coordinator
+
+    // initialize the coordinator, see 
+    // api docs for default options and what they do
+	oa.init_oa(
+        // pass in the coordinator
+        &coord, 
+        // pass in the procedure
+        // we want to execute immediately 
+        // after oasync initializes
+        init_fn = core,
+        // the rawptr we want to pass in the procedure
+        init_fn_arg = nil,
+        // maximum amount of workers oasync may spawn
+        max_workers = 4,
+        // maximum amount of blocking workers oasync may spawn
+       max_blocking = 2,
+        // to hog the main thread or yield immediately, 
+        // in this case, we hog the main thread
+        // the main thread count as another extra worker 
+        // that doesn't contribute to max_workers
+        use_main_thread = true,
+  )
+}
+```
+
+#### behaviors
+
+Now, let's take a look at the procedure, `core`, we want to 
+execute immediately after oasync runtime initializes.
+
+```odin
+core :: proc(_: rawptr) -> oa.Behavior {
+	fmt.println("goodbye world~")
+	return oa.B_None{}
+}
+```
+This one is quite simple. The argument passed in this procedure 
+will be the init_fn_arg from init_oa. You may ask: Why is it a 
+rawptr? To put it simply, Odin's simplisic type system and the 
+lack of metaprogramming support doesn't let me do this in a 
+type safe manner like how it's done in Scala.
+
+This procedure also returns an oa.Behavior. oa.Behavior dictates
+what oasync does *after* the execution of a task. In this 
+case, oa.B_None means "do nothing after core finishes execution".
+
+We can use behavior to achieve callbacks:
+```odin
+core :: proc(_: rawptr) -> oa.Behavior {
+	fmt.println("core")
+	return oa.B_Cb{effect = nextproc}
+}
+
+nextproc :: proc(_: rawptr) -> oa.Behavior {
+	fmt.println("nextproc")
+}
+```
+
+#### running new tasks
+
+You might want to spawn tasks in the middle of a task, doing 
+this is very simple.
+
+```odin
+foo :: proc(_: rawptr) -> oa.Behavior {
+	fmt.println("hi")
+	return oa.B_None{}
+}
+
+core :: proc(_: rawptr) -> oa.Behavior {
+	fmt.println("core")
+    // foo is the task we want to spawn 
+    // nil is the argument passed into it, rawptr as always 
+    // you may omit it as it defaults to nil
+    oa.go(foo, nil) 
+	return oa.B_None{}
+}
+```
+
+#### blocking tasks
+Sometimes, you may want to run blocking tasks that takes a 
+long time to finish. This should be avoided because it hogs 
+up our scheduler and leaving one of our threads out of commission.
+This is why we should spawn blocking tasks in this situation.
+```odin
+blocking :: proc(_: rawptr) -> oa.Behavior {
+	fmt.println("done")
+	time.sleep(1 * time.Second)
+	return oa.B_None{}
+}
+
+core :: proc(_: rawptr) -> oa.Behavior {
+	fmt.println("test")
+	for _ in 1 ..= 4 {
+		oa.gob(blocking)
+	}
+	return oa.B_None{}
+}
+```
+We only allow `max_blocking` amount of blocking task to run 
+at the same time, ensuring there is always rooms for non blocking 
+tasks to run.
+
+#### passing in arugments
+We replaced the default context.scheduler with an arena allocator.
+The arena allocator `vmem.arena_free_all(itself)` upon finishing 
+every task. This frees everything allocated on the heap. As for 
+the stack, Odin natrually frees everything upon task finishing.
+You already knows we pass in arguments via a rawptr, so natrually 
+we use the context.temp_allocator to allocate arguments we 
+wish to pass into another task.
+
+```odin
+foo :: proc(a: rawptr) -> oa.Behavior {
+	arg := cast(^string)a
+	fmt.println(arg^)
+	return oa.B_None{}
+}
+
+core :: proc(_: rawptr) -> oa.Behavior {
+    // remember to free it
+	nextarg := new_clone("hi", context.temp_allocator)
+	oa.go(foo, nextarg)
+	return oa.B_None{}
+}
+```
+
+#### unsafe dispatching
+You might want to spawn virtual tasks outside of threads managed 
+by oasync. This can be done via unsafe:
+```odin
+task :: proc(_: rawptr) -> oa.Behavior {
+	fmt.println("hi")
+	return oa.B_None{}
 }
 
 main :: proc() {
-    // create your own coordinator, do not edit any fields of it
 	coord: oa.Coordinator
-
-    // fire off the oasync runtime immediately
-    // see docstrings for extra options
-	oa.init_oa(&coord, init_fn = core)
+    // some arguments has default options, see api docs
+	oa.init_oa(&coord, init_fn = core, use_main_thread = false)
+	oa.unsafe_go(&coord, task)
+    // hog the main thread to prevent exiting immediately
+	time.sleep(1 * time.Second)
 }
 ```
+Unsafe in this case doesn't mean it will cause segfaults, 
+instead, it comes with performance panelity. Avoid this as much 
+as possible.
 
-###  running a virtual task 
-```odin
-child :: proc() {
-	fmt.println("hello from child!")
-}
-
-// DO NOT do this outside of threads managed by the coordinator
-oa.go(child)
-```
-
-### passing argument into another virtual task 
+#### context system
+To spawn tasks, oasync injects info into `context.user_ptr`. 
+This means that you should NEVER change it. Should you still 
+wish to use `context.user_ptr`, we offer a way to do so.
 ```odin 
-// odin lacks the typesystem to express this in a type safe manner
-// thus we pass data as a rawptr
-child :: proc(raw_data: rawptr) {
-	data := cast(^string)raw_data
-	fmt.println(data^)
+core :: proc(_: rawptr) -> oa.Behavior {
+    // cast it into a ref carrier
+    ptr := cast(^oa.Ref_Carrier)context.user_ptr
+    // ONLY access the user_ptr field 
+    // do NOT access other fields in Ref_Carrier
+    ptr.user_ptr := ...
+    return oa.B_None{}
 }
-
-// we need to allocate on the heap as the stack gets destroyed upon 
-// function finishing
-// we allocate with temp allocator since the default allocator in a virtual task
-// is swapped with an arena allocator
-// the allocator resets itself upon task finishing execution
-data := new_clone("pass data into childs threads~", context.temp_allocator)
-oa.go(child2, data)
-```
-
-### blocking tasks 
-```odin 
-// some actions blocks the worker, if too many blocking tasks are running, 
-// it will paralyse the coordinator!
-// please keep every task as short as possible to prevent this~
-
-// if blocking is necessary,
-blocking_child :: proc() {
-	time.sleep(2 * time.Second)
-	fmt.println("blocking child finishes!")
-}
-
-// use a blocking worker instead
-for i in 1 ..= 4 {
-	oa.gob(blocking_child)
-}
-
-// output: 
-// after 2 seconds...
-// blocking child finishes!
-// blocking child finishes!
-// after 2 more seconds...
-// blocking child finishes!
-// blocking child finishes!
-
-// blocking workers are a seprate pool of workers, this will make sure 
-// there are still rooms for non blocking tasks out there to run!
-
-
-blocking_child_witharg :: proc(arg: rawptr) {}
-// note that you can also pass in a rawptr: 
-oa.gob(blocking_child_witharg, input)
-
-// don't worry, they will still be used to perform non-blocking tasks 
-// when there are no blocking tasks! 
-// of course, this is slightly slower than generic workers, but they 
-// are trying their best so don't judge~
-```
-
-### unsafe dispatching 
-```odin
-// sometimes you are in threads not managed by the coordinator,
-// but you still want to spawn virtual tasks
-
-// you can do this:
-task :: proc() {}
-// pass in the coordinator into the last argument!
-unsafe_go(task, &coord)
-unsafe_gob(task, &coord)
-
-task_witharg :: proc(arg: rawptr) {}
-unsafe_go(task, input, &coord)
-unsafe_gob(task, input, &coord)
-
-// this really isn't unsafe in the sense that it might cause crashes:
-// this is just slower than dispatching normally...
-// avoid this as much as possible!
-
-// if these procedures are called before initializing the coordinator, 
-// they will be ran when the coordinator gets initialized
-// note that this might cause the procedure passed in oa.init_oa
-// to not be run before anything does!
-```
-
-### context system
-```odin 
-// we inject a pointer to a struct named Ref_Carrier into context.user_ptr
-// please do NOT modify it!
-
-// if you want to use that field still, cast said pointer 
-// into a Ref_Carrier and use the user_ptr field stored inside it 
-// please do NOT touch the worker field!
-
-// however, this is still not recommended as context persist 
-// across workers and NOT singular virtual threads!
-// same applies to ANYTHING related to the context system!
-ref_carrier := cast(^Ref_Carrier)context.user_ptr
-ref_carrier.user_ptr = ...
 ```

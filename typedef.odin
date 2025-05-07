@@ -25,23 +25,45 @@ Worker :: struct {
 	type:        Worker_Type,
 }
 
-@(private)
-Rawptr_Task :: struct {
-	// void * generic
-	// sometimes i wish for a more complex type system
-	effect: proc(input: rawptr),
+
+// behavior dictates what to do *after* the task is done, 
+// for example, callbacks
+Behavior :: union {
+	B_None,
+	B_Cb,
+	B_Cbb,
+}
+
+// do nothing
+B_None :: struct {
+}
+
+// callback to a function
+B_Cb :: struct {
+	effect: proc(input: rawptr) -> Behavior,
 	supply: rawptr,
 }
 
-@(private)
-Unit_Task :: struct {
-	effect: proc(),
+// callback to a function, blocking
+B_Cbb :: struct {
+	effect: proc(input: rawptr) -> Behavior,
+	supply: rawptr,
+}
+
+// types of behavior
+Btype :: enum {
+	// do nothing
+	Noop,
+	// execute another task upon the current task ending
+	Callback,
 }
 
 @(private)
-Task :: union {
-	Rawptr_Task,
-	Unit_Task,
+Task :: struct {
+	// void * generic
+	// sometimes i wish for a more complex type system
+	effect: proc(input: rawptr) -> Behavior,
+	supply: rawptr,
 }
 
 /* 
