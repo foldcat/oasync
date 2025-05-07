@@ -180,7 +180,7 @@ core :: proc(_: rawptr) -> oa.Behavior {
 
 #### unsafe dispatching
 You might want to spawn virtual tasks outside of threads managed 
-by oasync. This can be done via unsafe:
+by oasync. This can be done via `unsafe`:
 ```odin
 task :: proc(_: rawptr) -> oa.Behavior {
 	fmt.println("hi")
@@ -196,7 +196,7 @@ main :: proc() {
 	time.sleep(1 * time.Second)
 }
 ```
-Unsafe in this case doesn't mean it will cause segfaults, 
+`unsafe` in this case doesn't mean it will cause segfaults, 
 instead, it comes with performance panelity. Avoid this as much 
 as possible.
 
