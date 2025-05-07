@@ -120,7 +120,7 @@ unsafe_gob(task, input, &coord)
 
 // if these procedures are called before initializing the coordinator, 
 // they will be ran when the coordinator gets initialized
-// note that this might cause the procedure passed in oa.init 
+// note that this might cause the procedure passed in oa.init_oa
 // to not be run before anything does!
 ```
 
