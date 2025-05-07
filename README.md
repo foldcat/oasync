@@ -28,13 +28,13 @@ To use oasync, we first have to initialize it.
 main :: proc() {
 	coord: oa.Coordinator
 	oa.init_oa(
-    &coord, 
-    init_fn_arg = nil,
-    init_fn = core,
-    max_workers = 4,
-    max_blocking = 2,
-    use_main_thread = true,
-  )
+		&coord,
+		init_fn_arg = nil,
+		init_fn = core,
+		max_workers = 4,
+		max_blocking = 2,
+		use_main_thread = true,
+  	)
 }
 
 core :: proc(_: rawptr) -> oa.Behavior {
@@ -51,30 +51,30 @@ Let's dissect it.
 ```odin
 // entry point of our program
 main :: proc() {
-    // create a coordinator, we may use it later
+	// create a coordinator, we may use it later
 	coord: oa.Coordinator
 
-    // initialize the coordinator, see 
-    // api docs for default options and what they do
+	// initialize the coordinator, see 
+	// api docs for default options and what they do
 	oa.init_oa(
-        // pass in the coordinator
-        &coord, 
-        // pass in the procedure
-        // we want to execute immediately 
-        // after oasync initializes
-        init_fn = core,
-        // the rawptr we want to pass in the procedure
-        init_fn_arg = nil,
-        // maximum amount of workers oasync may spawn
-        max_workers = 4,
-        // maximum amount of blocking workers oasync may spawn
-       max_blocking = 2,
-        // to hog the main thread or yield immediately, 
-        // in this case, we hog the main thread
-        // the main thread count as another extra worker 
-        // that doesn't contribute to max_workers
-        use_main_thread = true,
-  )
+		// pass in the coordinator
+		&coord, 
+        	// pass in the procedure
+        	// we want to execute immediately 
+		// after oasync initializes
+		init_fn = core,
+        	// the rawptr we want to pass in the procedure
+		init_fn_arg = nil,
+		// maximum amount of workers oasync may spawn
+		max_workers = 4,
+		// maximum amount of blocking workers oasync may spawn
+		max_blocking = 2,
+		// to hog the main thread or yield immediately,
+		// in this case, we hog the main thread
+		// the main thread count as another extra worker
+		// that doesn't contribute to max_workers
+        	use_main_thread = true,
+  	)
 }
 ```
 
@@ -124,10 +124,10 @@ foo :: proc(_: rawptr) -> oa.Behavior {
 
 core :: proc(_: rawptr) -> oa.Behavior {
 	fmt.println("core")
-    // foo is the task we want to spawn 
-    // nil is the argument passed into it, rawptr as always 
-    // you may omit it as it defaults to nil
-    oa.go(foo, nil) 
+	// foo is the task we want to spawn 
+	// nil is the argument passed into it, rawptr as always 
+	// you may omit it as it defaults to nil
+	oa.go(foo, nil) 
 	return oa.B_None{}
 }
 ```
@@ -173,7 +173,7 @@ foo :: proc(a: rawptr) -> oa.Behavior {
 }
 
 core :: proc(_: rawptr) -> oa.Behavior {
-    // remember to free it
+	// remember to free it
 	nextarg := new_clone("hi", context.temp_allocator)
 	oa.go(foo, nextarg)
 	return oa.B_None{}
@@ -191,10 +191,10 @@ task :: proc(_: rawptr) -> oa.Behavior {
 
 main :: proc() {
 	coord: oa.Coordinator
-    // some arguments has default options, see api docs
+	// some arguments has default options, see api docs
 	oa.init_oa(&coord, init_fn = core, use_main_thread = false)
 	oa.unsafe_go(&coord, task)
-    // hog the main thread to prevent exiting immediately
+	// hog the main thread to prevent exiting immediately
 	time.sleep(1 * time.Second)
 }
 ```
@@ -208,11 +208,11 @@ This means that you should NEVER change it. Should you still
 wish to use `context.user_ptr`, we offer a way to do so.
 ```odin 
 core :: proc(_: rawptr) -> oa.Behavior {
-    // cast it into a ref carrier
-    ptr := cast(^oa.Ref_Carrier)context.user_ptr
-    // ONLY access the user_ptr field 
-    // do NOT access other fields in Ref_Carrier
-    ptr.user_ptr := ...
-    return oa.B_None{}
+	// cast it into a ref carrier
+	ptr := cast(^oa.Ref_Carrier)context.user_ptr
+	// ONLY access the user_ptr field 
+	// do NOT access other fields in Ref_Carrier
+	ptr.user_ptr := ...
+	return oa.B_None{}
 }
 ```
