@@ -88,14 +88,14 @@ core :: proc(_: rawptr) -> oa.Behavior {
 }
 ```
 This one is quite simple. The argument passed in this procedure 
-will be the init_fn_arg from init_oa. You may ask: Why is it a 
-rawptr? To put it simply, Odin's simplisic type system and the 
+will be the `init_fn_arg` from `init_oa`. You may ask: Why is it a 
+`rawptr`? To put it simply, Odin's simplisic type system and the 
 lack of metaprogramming support doesn't let me do this in a 
 type safe manner like how it's done in Scala.
 
-This procedure also returns an oa.Behavior. oa.Behavior dictates
+This procedure also returns an `oa.Behavior`. `oa.Behavior` dictates
 what oasync does *after* the execution of a task. In this 
-case, oa.B_None means "do nothing after core finishes execution".
+case, `oa.B_None` means "do nothing after core finishes execution".
 
 We can use behavior to achieve callbacks:
 ```odin
@@ -159,8 +159,8 @@ We replaced the default context.scheduler with an arena allocator.
 The arena allocator `vmem.arena_free_all(itself)` upon finishing 
 every task. This frees everything allocated on the heap. As for 
 the stack, Odin natrually frees everything upon task finishing.
-You already knows we pass in arguments via a rawptr, so natrually 
-we use the context.temp_allocator to allocate arguments we 
+You already knows we pass in arguments via a `rawptr`, so natrually 
+we use the `context.temp_allocator` to allocate arguments we 
 wish to pass into another task.
 
 ```odin
