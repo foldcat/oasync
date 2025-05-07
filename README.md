@@ -8,7 +8,7 @@ automatically and quickly parallelize tasks across several os threads.
 Now back in active development!
 
 ## usage
-Note that this library is in **PRE ALPHA STATE**. It lacks essential features 
+Note that this library is in a **PRE ALPHA STATE**. It lacks essential features 
 and may randomly cause segmented faults.
 
 However, please test it out and provide feedbacks and bug reports!
@@ -18,9 +18,9 @@ In the examples below, we will be importing oasync as so:
 import oa "../oasync"
 ```
 
-Besides the walkthorugh, I **HEAVILY** recommend doing `odin doc .` in the 
+Besides the walkthough, I **HEAVILY** recommend doing `odin doc .` in the 
 root directory of oasync to read the API documentation. The following 
-walkthorugh does not cover every procedure and their options.
+walkthough does not cover every procedure and their options.
 
 ### initializing oasync runtime
 To use oasync, we first have to initialize it.
@@ -80,8 +80,8 @@ main :: proc() {
 
 #### behaviors
 
-Now, let's take a look at the procedure, `core`, we want to 
-execute immediately after oasync runtime initializes.
+Lets take a look at the procedure `core` that we need to 
+execute immediately after the oasync runtime initializes.
 
 ```odin
 core :: proc(_: rawptr) -> oa.Behavior {
@@ -133,8 +133,8 @@ core :: proc(_: rawptr) -> oa.Behavior {
 ```
 
 #### blocking tasks
-Sometimes, you may want to run blocking tasks that takes a 
-long time to finish. This should be avoided because it hogs 
+Sometimes you may want to run blocking tasks that takes a 
+long time to finish, this should be avoided because it hogs 
 up our scheduler and leaving one of our threads out of commission.
 This is why we should spawn blocking tasks in this situation.
 ```odin
@@ -161,7 +161,7 @@ We replaced the default context.scheduler with an arena allocator.
 The arena allocator `vmem.arena_free_all(itself)` upon finishing 
 every task. This frees everything allocated on the heap. As for 
 the stack, Odin natrually frees everything upon task finishing.
-You already knows we pass in arguments via a `rawptr`, so natrually 
+You already know we pass in arguments via a `rawptr`, so natrually 
 we use the `context.temp_allocator` to allocate arguments we 
 wish to pass into another task.
 
