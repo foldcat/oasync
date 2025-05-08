@@ -19,17 +19,8 @@ steal :: proc(this: ^Worker) {
 	// steal from a random worker
 	worker: Worker
 
-	switch this.type {
-	case .Generic:
-		// generic workers should not be allowed to steal blocking task
-		worker = rand.choice(this.coordinator.workers[:])
-	case .Blocking:
-		if rand.float32() > 0.5 {
-			worker = rand.choice(this.coordinator.workers[:])
-		} else {
-			worker = rand.choice(this.coordinator.blocking_workers[:])
-		}
-	}
+	// generic workers should not be allowed to steal blocking task
+	worker = rand.choice(this.coordinator.workers[:])
 
 	if worker.id == this.id {
 		// same id, and don't steal from self,
@@ -55,14 +46,82 @@ steal :: proc(this: ^Worker) {
 
 }
 
+// race condition caused this to NOT work 
+// when logging is disabled 
+// what have i bought upon myself...
 run_task :: proc(t: Task) {
+	worker := get_worker()
+
+	// // we can still block
+	// // and the task is blocking
+	// if t.is_blocking {
+	// 	// log.debug("current blocking count", sync.atomic_load(&worker.coordinator.blocking_count))
+	// 	if sync.atomic_load(&worker.coordinator.blocking_count) <
+	// 	   worker.coordinator.max_blocking_count {
+	// 		// signal the worker is blocking
+	// 		worker.is_blocking = true
+	// 		// increment the coordinator blocking count 
+	// 		sync.atomic_add(&worker.coordinator.blocking_count, 1)
+	// 	} else {
+	// 		// throw it back, we run it later
+	// 		spawn_task(t)
+	// 		return
+	// 	}
+	// }
+	current_count := sync.atomic_load(&worker.coordinator.blocking_count)
+	if t.is_blocking {
+		for {
+			if current_count >= worker.coordinator.max_blocking_count {
+				spawn_task(t)
+				return
+			}
+			val, ok := sync.atomic_compare_exchange_strong(
+				&worker.coordinator.blocking_count,
+				current_count,
+				current_count + 1,
+			)
+			// update current count
+			if ok {
+				log.debug(val, ok)
+				worker.is_blocking = true
+				log.debug(worker.id)
+				break // successfully incremented
+			} else {
+				log.debug("failed")
+			}
+			// failed, retry
+		}
+	}
+
 	beh := t.effect(t.supply)
+	if t.is_blocking {
+		for {
+			current_count = sync.atomic_load(&worker.coordinator.blocking_count)
+			val, ok := sync.atomic_compare_exchange_strong(
+				&worker.coordinator.blocking_count,
+				current_count,
+				current_count - 1,
+			)
+			if ok {
+				worker.is_blocking = false
+				break
+			}
+			log.debug("second fail")
+			// failed, retry
+		}
+		// log.debug("current blocking count", sync.atomic_load(&worker.coordinator.blocking_count))
+	}
+
+
 	switch behavior in beh {
 	case B_None:
-	// do nothing
+		// do nothing
+		return
 	case B_Cb:
+		// call back
 		go(behavior.effect, behavior.supply)
 	case B_Cbb:
+		// blocking callback
 		gob(behavior.effect, behavior.supply)
 	}
 }
@@ -84,21 +143,10 @@ worker_runloop :: proc(t: ^thread.Thread) {
 		//log.debug("pop")
 		tsk, exist := queue_pop(&worker.localq)
 		if exist {
-			log.debug("pulled from local queue, running")
+			// log.debug("pulled from local queue, running")
 			run_task(tsk)
 
 			continue
-		}
-
-		// here are for a blocking worker 
-		if worker.type == .Blocking {
-			tsk, exist = gqueue_pop(&worker.coordinator.global_blockingq)
-			if exist {
-				log.debug("got item from global blocking channel")
-				run_task(tsk)
-
-				continue
-			}
 		}
 
 		// local queue seems to be empty at this point, take a look 
@@ -142,32 +190,9 @@ spawn_task :: proc(task: Task) {
 	}
 }
 
-// blocking tasks are pushed onto a queue
-spawn_blocking_task :: proc(task: Task) {
-	worker := get_worker()
-
-	switch worker.type {
-	case .Generic:
-		gqueue_push(&worker.coordinator.global_blockingq, task)
-	case .Blocking:
-		if !queue_push(&worker.localq, task) {
-			// handle pushing to global queue
-			// push half of it
-			for i in 1 ..= queue_length(&worker.localq) / 2 {
-				item, ok := queue_pop(&worker.localq)
-				gqueue_push(&worker.coordinator.global_blockingq, item)
-			}
-			gqueue_push(&worker.coordinator.global_blockingq, task)
-		}
-	}
-}
 
 spawn_unsafe_task :: proc(task: Task, coord: ^Coordinator) {
 	gqueue_push(&coord.globalq, task)
-}
-
-spawn_unsafe_blocking_task :: proc(task: Task, coord: ^Coordinator) {
-	gqueue_push(&coord.global_blockingq, task)
 }
 
 setup_thread :: proc(worker: ^Worker) -> ^thread.Thread {
@@ -197,14 +222,14 @@ setup_thread :: proc(worker: ^Worker) -> ^thread.Thread {
 
 }
 
-make_task :: proc(p: proc(_: rawptr) -> Behavior, data: rawptr) -> Task {
-	return Task{effect = p, supply = data}
+make_task :: proc(p: proc(_: rawptr) -> Behavior, data: rawptr, is_blocking := false) -> Task {
+	return Task{effect = p, supply = data, is_blocking = is_blocking}
 }
 
 _init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
 	log.debug("starting worker system")
 	coord.worker_count = cfg.worker_count
-	coord.blocking_worker_count = cfg.blocking_worker_count
+	coord.max_blocking_count = cfg.blocking_worker_count
 
 	id_gen: u8
 
@@ -212,7 +237,7 @@ _init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
 	log.debug("setting up global channel")
 
 	barrier := sync.Barrier{}
-	sync.barrier_init(&barrier, int(cfg.worker_count + cfg.blocking_worker_count))
+	sync.barrier_init(&barrier, int(cfg.worker_count))
 
 	coord.globalq = make_gqueue(Task)
 
@@ -225,29 +250,11 @@ _init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
 		// load in the barrier
 		worker.barrier_ref = &barrier
 		worker.coordinator = coord
-		worker.type = Worker_Type.Generic
 		append(&coord.workers, worker)
 
 		thrd := setup_thread(&worker)
 		thread.start(thrd)
 		log.debug("started", i, "th worker")
-	}
-
-	for i in 1 ..= coord.blocking_worker_count {
-		worker := Worker{}
-
-		worker.id = id_gen
-		id_gen += 1
-
-		// load in the barrier
-		worker.barrier_ref = &barrier
-		worker.coordinator = coord
-		worker.type = Worker_Type.Blocking
-		append(&coord.workers, worker)
-
-		thrd := setup_thread(&worker)
-		thread.start(thrd)
-		log.debug("started", i, "th blocking worker")
 	}
 
 	// chan send freezes indefinitely when nothing is listening to it

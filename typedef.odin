@@ -7,11 +7,6 @@ import "core:sync"
 @(private)
 LOCAL_QUEUE_SIZE :: 256
 
-@(private)
-Worker_Type :: enum {
-	Generic,
-	Blocking,
-}
 
 // assigned to each thread
 @(private)
@@ -22,7 +17,7 @@ Worker :: struct {
 	id:          u8,
 	coordinator: ^Coordinator,
 	arena:       vmem.Arena,
-	type:        Worker_Type,
+	is_blocking: bool,
 }
 
 
@@ -62,8 +57,9 @@ Btype :: enum {
 Task :: struct {
 	// void * generic
 	// sometimes i wish for a more complex type system
-	effect: proc(input: rawptr) -> Behavior,
-	supply: rawptr,
+	effect:      proc(input: rawptr) -> Behavior,
+	supply:      rawptr,
+	is_blocking: bool,
 }
 
 /* 
@@ -72,13 +68,12 @@ executing tasks
 should not be accessed
 */
 Coordinator :: struct {
-	workers:               [dynamic]Worker,
-	worker_count:          u8,
-	blocking_workers:      [dynamic]Worker,
-	blocking_worker_count: u8,
-	globalq:               Global_Queue(Task),
-	global_blockingq:      Global_Queue(Task),
-	search_count:          u8,
+	workers:            [dynamic]Worker,
+	worker_count:       u8,
+	globalq:            Global_Queue(Task),
+	search_count:       u8,
+	max_blocking_count: u8,
+	blocking_count:     u8,
 }
 
 /*

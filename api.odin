@@ -15,7 +15,7 @@ when blocking_worker_count is zero, this procedure is noop
 and may cause memory leaks
 */
 gob :: proc(p: proc(_: rawptr) -> Behavior, data: rawptr = nil) {
-	spawn_blocking_task(make_task(p, data))
+	spawn_task(make_task(p, data, is_blocking = true))
 }
 
 /* 
@@ -33,7 +33,7 @@ managed by a coordinator, comes with performance penalities
 and does not cause instabilities
 */
 unsafe_gob :: proc(coord: ^Coordinator, p: proc(_: rawptr) -> Behavior, data: rawptr = nil) {
-	spawn_unsafe_blocking_task(make_task(p, data), coord)
+	spawn_unsafe_task(make_task(p, data, is_blocking = true), coord)
 }
 
 /*
