@@ -5,8 +5,6 @@ import "core:sync"
 
 /// local queue is a lock free queue based on an array
 
-// it looks like a duck, it probably behaves like a duck, 
-// i can't verify it tho, lets just treat it like a duck
 Local_Queue :: struct($T: typeid, $S: int) {
 	// concurrently updated by many threads
 	head:   u32,

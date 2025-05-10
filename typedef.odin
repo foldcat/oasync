@@ -18,6 +18,7 @@ Worker :: struct {
 	coordinator: ^Coordinator,
 	arena:       vmem.Arena,
 	is_blocking: bool,
+	is_stealing: bool,
 }
 
 
@@ -71,7 +72,8 @@ Coordinator :: struct {
 	workers:            [dynamic]Worker,
 	worker_count:       u8,
 	globalq:            Global_Queue(Task),
-	search_count:       u8,
+	steal_count:        u8,
+	max_steal_count:    u8,
 	max_blocking_count: u8,
 	blocking_count:     u8,
 }

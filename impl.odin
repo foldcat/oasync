@@ -19,7 +19,6 @@ steal :: proc(this: ^Worker) {
 	// steal from a random worker
 	worker: Worker
 
-	// generic workers should not be allowed to steal blocking task
 	worker = rand.choice(this.coordinator.workers[:])
 
 	if worker.id == this.id {
@@ -34,7 +33,7 @@ steal :: proc(this: ^Worker) {
 	}
 
 	// steal half of the text once we find one
-	for i in 1 ..= u64(queue_length / 2) { 	// TODO: need further testing
+	for i in 1 ..= u64(queue_length / 2) {
 		elem, ok := queue_nonlocal_pop(&worker.localq)
 		if !ok {
 			log.error("failed to steal")
@@ -127,11 +126,11 @@ worker_runloop :: proc(t: ^thread.Thread) {
 		// increment the stealing count
 		// this part needs A LOT OF work
 		//log.debug("steal")
-		scount := sync.atomic_load(&worker.coordinator.search_count)
+		scount := sync.atomic_load(&worker.coordinator.steal_count)
 		if scount < (worker.coordinator.worker_count / 2) { 	// throttle stealing to half the total thread count
-			sync.atomic_add(&worker.coordinator.search_count, 1) // register the stealing
+			sync.atomic_add(&worker.coordinator.steal_count, 1) // register the stealing
 			steal(worker) // start stealing
-			sync.atomic_sub(&worker.coordinator.search_count, 1) // register the stealing
+			sync.atomic_sub(&worker.coordinator.steal_count, 1) // register the stealing
 		}
 
 	}
@@ -200,16 +199,16 @@ _init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
 	log.debug("setting up global channel")
 
 	barrier := sync.Barrier{}
-
-	if cfg.use_main_thread {
-		sync.barrier_init(&barrier, int(cfg.worker_count) + 1)
-	} else {
-		sync.barrier_init(&barrier, int(cfg.worker_count))
-	}
+	sync.barrier_init(&barrier, int(cfg.worker_count))
 
 	coord.globalq = make_gqueue(Task)
 
-	for i in 1 ..= coord.worker_count {
+	required_worker_count := coord.worker_count
+	if cfg.use_main_thread {
+		required_worker_count -= 1
+	}
+
+	for i in 1 ..= required_worker_count {
 		worker := Worker{}
 
 		worker.id = id_gen
