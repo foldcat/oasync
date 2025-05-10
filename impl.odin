@@ -52,22 +52,6 @@ steal :: proc(this: ^Worker) {
 run_task :: proc(t: Task) {
 	worker := get_worker()
 
-	// // we can still block
-	// // and the task is blocking
-	// if t.is_blocking {
-	// 	// log.debug("current blocking count", sync.atomic_load(&worker.coordinator.blocking_count))
-	// 	if sync.atomic_load(&worker.coordinator.blocking_count) <
-	// 	   worker.coordinator.max_blocking_count {
-	// 		// signal the worker is blocking
-	// 		worker.is_blocking = true
-	// 		// increment the coordinator blocking count 
-	// 		sync.atomic_add(&worker.coordinator.blocking_count, 1)
-	// 	} else {
-	// 		// throw it back, we run it later
-	// 		spawn_task(t)
-	// 		return
-	// 	}
-	// }
 	current_count := sync.atomic_load(&worker.coordinator.blocking_count)
 	if t.is_blocking {
 		for {
@@ -94,6 +78,7 @@ run_task :: proc(t: Task) {
 	}
 
 	beh := t.effect(t.supply)
+
 	if t.is_blocking {
 		for {
 			current_count = sync.atomic_load(&worker.coordinator.blocking_count)
@@ -112,6 +97,7 @@ run_task :: proc(t: Task) {
 		// log.debug("current blocking count", sync.atomic_load(&worker.coordinator.blocking_count))
 	}
 
+	log.debug("did run")
 
 	switch behavior in beh {
 	case B_None:
@@ -237,7 +223,12 @@ _init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
 	log.debug("setting up global channel")
 
 	barrier := sync.Barrier{}
-	sync.barrier_init(&barrier, int(cfg.worker_count))
+
+	if cfg.use_main_thread {
+		sync.barrier_init(&barrier, int(cfg.worker_count) + 1)
+	} else {
+		sync.barrier_init(&barrier, int(cfg.worker_count))
+	}
 
 	coord.globalq = make_gqueue(Task)
 
