@@ -49,55 +49,32 @@ steal :: proc(this: ^Worker) {
 // race condition caused this to NOT work 
 // when logging is disabled 
 // what have i bought upon myself...
+task_run_count := 0
+
 run_task :: proc(t: Task) {
 	worker := get_worker()
 
 	current_count := sync.atomic_load(&worker.coordinator.blocking_count)
 	if t.is_blocking {
-		for {
-			if current_count >= worker.coordinator.max_blocking_count {
-				spawn_task(t)
-				return
-			}
-			val, ok := sync.atomic_compare_exchange_strong(
-				&worker.coordinator.blocking_count,
-				current_count,
-				current_count + 1,
-			)
-			// update current count
-			if ok {
-				log.debug(val, ok)
-				worker.is_blocking = true
-				log.debug(worker.id)
-				break // successfully incremented
-			} else {
-				log.debug("failed")
-			}
-			// failed, retry
+		if current_count >= worker.coordinator.max_blocking_count {
+			spawn_task(t)
+			return
 		}
+		sync.atomic_add(&worker.coordinator.blocking_count, 1)
+		worker.is_blocking = true
 	}
 
 	beh := t.effect(t.supply)
 
 	if t.is_blocking {
-		for {
-			current_count = sync.atomic_load(&worker.coordinator.blocking_count)
-			val, ok := sync.atomic_compare_exchange_strong(
-				&worker.coordinator.blocking_count,
-				current_count,
-				current_count - 1,
-			)
-			if ok {
-				worker.is_blocking = false
-				break
-			}
-			log.debug("second fail")
-			// failed, retry
-		}
-		// log.debug("current blocking count", sync.atomic_load(&worker.coordinator.blocking_count))
+		current_count = sync.atomic_load(&worker.coordinator.blocking_count)
+		sync.atomic_sub(&worker.coordinator.blocking_count, 1)
+		worker.is_blocking = false
 	}
 
 	log.debug("did run")
+	task_run_count += 1
+	log.debug("ran", task_run_count)
 
 	switch behavior in beh {
 	case B_None:
