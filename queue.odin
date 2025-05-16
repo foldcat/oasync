@@ -116,14 +116,6 @@ push_back_finish :: proc(q: ^Local_Queue($T, $S), task: T, tail: u16) {
 
 NUM_TASK_TAKEN: u16 : u16(LOCAL_QUEUE_SIZE / 2)
 
-// since our buffer is a circular queue, naturally 
-// we would need a circular iterator designed 
-// to handle just that
-Circular_Iterator :: struct($T: typeid) {
-	index: int,
-	data:  []T,
-}
-
 queue_push_overflow :: proc(
 	task: $T,
 	head, tail: u16,
