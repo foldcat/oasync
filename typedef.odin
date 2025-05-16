@@ -3,11 +3,6 @@ package oasync
 import vmem "core:mem/virtual"
 import "core:sync"
 
-// 2 ^ 8
-@(private)
-LOCAL_QUEUE_SIZE :: 256
-
-
 // assigned to each thread
 @(private)
 Worker :: struct {
@@ -20,7 +15,6 @@ Worker :: struct {
 	is_blocking: bool,
 	is_stealing: bool,
 }
-
 
 // behavior dictates what to do *after* the task is done, 
 // for example, callbacks
@@ -74,8 +68,8 @@ Coordinator :: struct {
 	globalq:            Global_Queue(Task),
 	steal_count:        u8,
 	max_steal_count:    u8,
-	max_blocking_count: u8,
-	blocking_count:     u8,
+	max_blocking_count: i8,
+	blocking_count:     i8,
 }
 
 /*

@@ -33,27 +33,16 @@ steal :: proc(this: ^Worker) {
 	}
 
 	// steal half of the text once we find one
-	for i in 1 ..= u64(queue_length / 2) {
-		elem, ok := queue_nonlocal_pop(&worker.localq)
-		if !ok {
-			log.error("failed to steal")
-			return
-		}
-
-		queue_push(&this.localq, elem)
-	}
-
+	queue_steal_into(&this.localq, &worker.localq)
 }
-
-// race condition caused this to NOT work 
-// when logging is disabled 
-// what have i bought upon myself...
-task_run_count := 0
 
 run_task :: proc(t: Task) {
 	worker := get_worker()
 
-	current_count := sync.atomic_load(&worker.coordinator.blocking_count)
+	current_count := sync.atomic_load_explicit(
+		&worker.coordinator.blocking_count,
+		sync.Atomic_Memory_Order.Relaxed,
+	)
 	if t.is_blocking {
 		if current_count >= worker.coordinator.max_blocking_count {
 			spawn_task(t)
@@ -66,14 +55,9 @@ run_task :: proc(t: Task) {
 	beh := t.effect(t.supply)
 
 	if t.is_blocking {
-		current_count = sync.atomic_load(&worker.coordinator.blocking_count)
 		sync.atomic_sub(&worker.coordinator.blocking_count, 1)
 		worker.is_blocking = false
 	}
-
-	log.debug("did run")
-	task_run_count += 1
-	log.debug("ran", task_run_count)
 
 	switch behavior in beh {
 	case B_None:
@@ -141,15 +125,7 @@ worker_runloop :: proc(t: ^thread.Thread) {
 spawn_task :: proc(task: Task) {
 	worker := get_worker()
 
-	if !queue_push(&worker.localq, task) {
-		// handle pushing to global queue
-		// push half of it
-		for i in 1 ..= queue_length(&worker.localq) / 2 {
-			item, ok := queue_pop(&worker.localq)
-			gqueue_push(&worker.coordinator.globalq, item)
-		}
-		gqueue_push(&worker.coordinator.globalq, task)
-	}
+	queue_push_back_or_overflow(&worker.localq, task, &worker.coordinator.globalq)
 }
 
 
@@ -191,7 +167,7 @@ make_task :: proc(p: proc(_: rawptr) -> Behavior, data: rawptr, is_blocking := f
 _init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
 	log.debug("starting worker system")
 	coord.worker_count = cfg.worker_count
-	coord.max_blocking_count = cfg.blocking_worker_count
+	coord.max_blocking_count = cast(i8)cfg.blocking_worker_count
 
 	id_gen: u8
 
