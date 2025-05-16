@@ -21,11 +21,15 @@ Local_Queue :: struct($T: typeid, $S: int) {
 	buffer: [S]T,
 }
 
-// must be the 2^n so we can do a bitmask for 
-// circular behavior, in this case we use
-// 2 ^ 8 as the value
-LOCAL_QUEUE_SIZE :: 256
-
+when ODIN_DEBUG {
+	// helps catch edge cases
+	LOCAL_QUEUE_SIZE :: 8
+} else {
+	// must be the 2^n so we can do a bitmask for 
+	// circular behavior, in this case we use
+	// 2 ^ 8 as the value
+	LOCAL_QUEUE_SIZE :: 256
+}
 // used for circular behaviors
 MASK: u16 : LOCAL_QUEUE_SIZE - 1
 
