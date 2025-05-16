@@ -52,7 +52,24 @@ run_task :: proc(t: Task) {
 		worker.is_blocking = true
 	}
 
+	when ODIN_DEBUG {
+		start_time := time.tick_now()
+	}
 	beh := t.effect(t.supply)
+	when ODIN_DEBUG {
+		end_time := time.tick_now()
+		diff := time.tick_diff(start_time, end_time)
+		exec_duration := time.duration_milliseconds(diff)
+		if exec_duration > 40 && !t.is_blocking {
+			log.warn(
+				"oasync debug runtime detected a task executing with duration longer than 40ms,",
+				"your CPU is likely starving,",
+				"this is a sign that you are unintentionally running blocking I/O operations",
+				"without using blocking dispatch",
+			)
+		}
+
+	}
 
 	if t.is_blocking {
 		sync.atomic_sub(&worker.coordinator.blocking_count, 1)
