@@ -36,8 +36,8 @@ MASK: u32 : LOCAL_QUEUE_SIZE - 1
 
 // unpack a u64 into the real position and the stealer position
 unpack :: proc(pack: u64) -> (real, steal: u32) {
-	real = u32((pack >> 32) & 0xFFFF)
-	steal = u32(pack & 0xFFFF)
+	real = u32((pack >> 32) & 0xFFFFFFFF)
+	steal = u32(pack & 0xFFFFFFFF)
 	return real, steal
 }
 
