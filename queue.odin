@@ -8,15 +8,15 @@ import "core:sync"
 
 Local_Queue :: struct($T: typeid, $S: int) {
 	// concurrently updated by many threads
-	// this is the result of two u16s packed together,
+	// this is the result of two u32s packed together,
 	// one account for stealer position and the 
 	// other account for the "real" head position
 	// nothing is stealing when real and stealing position equates
 	// this lets us grab both the head and tail position with just 
 	// a single atomic load
-	head:   u32,
+	head:   u64,
 	// only updated by one producer
-	tail:   u16,
+	tail:   u32,
 	// stores items
 	buffer: [S]T,
 }
@@ -31,19 +31,19 @@ when ODIN_DEBUG {
 	LOCAL_QUEUE_SIZE :: 256
 }
 // used for circular behaviors
-MASK: u16 : LOCAL_QUEUE_SIZE - 1
+MASK: u32 : LOCAL_QUEUE_SIZE - 1
 
 
-// unpack a u32 into the real position and the stealer position
-unpack :: proc(pack: u32) -> (real, steal: u16) {
-	real = u16((pack >> 16) & 0xFFFF)
-	steal = u16(pack & 0xFFFF)
+// unpack a u64 into the real position and the stealer position
+unpack :: proc(pack: u64) -> (real, steal: u32) {
+	real = u32((pack >> 32) & 0xFFFF)
+	steal = u32(pack & 0xFFFF)
 	return real, steal
 }
 
-// pack the real position and the stealer position into a singular u32
-pack :: proc(real, steal: u16) -> u32 {
-	return (u32(real) << 16) | u32(steal)
+// pack the real position and the stealer position into a singular u64
+pack :: proc(real, steal: u32) -> u64 {
+	return (u64(real) << 32) | u64(steal)
 }
 
 make_queue :: proc($T: typeid, $S: int) -> Local_Queue(T, S) {
@@ -53,21 +53,21 @@ make_queue :: proc($T: typeid, $S: int) -> Local_Queue(T, S) {
 // subtraction/addition in odin already wraps, but honestly? might as 
 // well write this seemingly useless (and actually *is* useless)
 // procedure to stay true to the original code~
-wrapping_sub :: proc(lhs, rhs: u16) -> u16 {
+wrapping_sub :: proc(lhs, rhs: u32) -> u32 {
 	return lhs - rhs
 }
-wrapping_add :: proc(lhs, rhs: u16) -> u16 {
+wrapping_add :: proc(lhs, rhs: u32) -> u32 {
 	return lhs + rhs
 }
 
-queue_remaining_slots :: proc(q: ^Local_Queue($T, $S)) -> u16 {
+queue_remaining_slots :: proc(q: ^Local_Queue($T, $S)) -> u32 {
 	_, steal := unpack(sync.atomic_load_explicit(&q.head, sync.Atomic_Memory_Order.Acquire))
 	tail := sync.atomic_load_explicit(&q.tail, sync.Atomic_Memory_Order.Acquire)
 	return LOCAL_QUEUE_SIZE - wrapping_add(tail, steal)
 
 }
 
-queue_length :: proc(q: ^Local_Queue($T, $S)) -> u16 {
+queue_length :: proc(q: ^Local_Queue($T, $S)) -> u32 {
 	head, _ := unpack(sync.atomic_load_explicit(&q.head, sync.Atomic_Memory_Order.Acquire))
 	tail := sync.atomic_load_explicit(&q.tail, sync.Atomic_Memory_Order.Acquire)
 	return wrapping_sub(tail, head)
@@ -80,7 +80,7 @@ queue_is_empty :: proc(q: ^Local_Queue($T, $S)) -> bool {
 // push a singular task into a local queue, should the queue overflow, 
 // lets injects tasks into global queue~
 queue_push_back_or_overflow :: proc(q: ^Local_Queue($T, $S), item: T, overflow: ^Global_Queue(T)) {
-	tail: u16
+	tail: u32
 	task := item
 	for {
 		head := sync.atomic_load_explicit(&q.head, sync.Atomic_Memory_Order.Acquire)
@@ -112,17 +112,17 @@ queue_push_back_or_overflow :: proc(q: ^Local_Queue($T, $S), item: T, overflow: 
 	push_back_finish(q, task, tail)
 }
 
-push_back_finish :: proc(q: ^Local_Queue($T, $S), task: T, tail: u16) {
+push_back_finish :: proc(q: ^Local_Queue($T, $S), task: T, tail: u32) {
 	idx := tail & MASK
 	q.buffer[idx] = task
 	sync.atomic_store_explicit(&q.tail, wrapping_add(tail, 1), sync.Atomic_Memory_Order.Release)
 }
 
-NUM_TASK_TAKEN: u16 : u16(LOCAL_QUEUE_SIZE / 2)
+NUM_TASK_TAKEN: u32 : u32(LOCAL_QUEUE_SIZE / 2)
 
 queue_push_overflow :: proc(
 	task: $T,
-	head, tail: u16,
+	head, tail: u32,
 	overflow: ^Global_Queue(T),
 	local_q: ^Local_Queue(T, $S),
 ) -> (
@@ -159,7 +159,7 @@ queue_push_overflow :: proc(
 queue_pop :: proc(q: ^Local_Queue($T, $S)) -> (res: T, ok: bool) {
 	head := sync.atomic_load_explicit(&q.head, sync.Atomic_Memory_Order.Acquire)
 
-	idx: u16
+	idx: u32
 	for {
 		real, steal := unpack(head)
 		tail := q.tail
@@ -168,7 +168,7 @@ queue_pop :: proc(q: ^Local_Queue($T, $S)) -> (res: T, ok: bool) {
 		}
 		next_real := wrapping_add(real, 1)
 
-		next: u32
+		next: u64
 		if steal == real {
 			next = pack(next_real, next_real)
 		} else {
@@ -195,7 +195,7 @@ queue_pop :: proc(q: ^Local_Queue($T, $S)) -> (res: T, ok: bool) {
 queue_steal_into :: proc(q: ^Local_Queue($T, $S), dst: ^Local_Queue(T, S)) -> (res: T, ok_: bool) {
 	dst_tail := dst.tail
 	steal, _ := unpack(sync.atomic_load_explicit(&dst.head, sync.Atomic_Memory_Order.Acquire))
-	if wrapping_sub(dst_tail, steal) > u16(LOCAL_QUEUE_SIZE / 2) {
+	if wrapping_sub(dst_tail, steal) > u32(LOCAL_QUEUE_SIZE / 2) {
 		// we could steal less but it would be too complex
 		return
 	}
@@ -222,11 +222,11 @@ queue_steal_into :: proc(q: ^Local_Queue($T, $S), dst: ^Local_Queue(T, S)) -> (r
 
 }
 
-queue_steal_into2 :: proc(q: ^Local_Queue($T, $S), dst: ^Local_Queue(T, S), dst_tail: u16) -> u16 {
+queue_steal_into2 :: proc(q: ^Local_Queue($T, $S), dst: ^Local_Queue(T, S), dst_tail: u32) -> u32 {
 	prev_packed := sync.atomic_load_explicit(&q.head, sync.Atomic_Memory_Order.Acquire)
-	next_packed: u32
+	next_packed: u64
 
-	n: u16
+	n: u32
 	for {
 		src_head_real, src_head_steal := unpack(prev_packed)
 		src_tail := sync.atomic_load_explicit(&q.tail, sync.Atomic_Memory_Order.Acquire)
