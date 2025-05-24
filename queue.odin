@@ -1,6 +1,7 @@
 #+private
 package oasync
 
+import "core:log"
 import "core:sync"
 
 /// local queue is a lock free queue based on an array with circular behaviors
@@ -158,12 +159,13 @@ queue_push_overflow :: proc(
 
 queue_pop :: proc(q: ^Local_Queue($T, $S)) -> (res: T, ok: bool) {
 	head := sync.atomic_load_explicit(&q.head, sync.Atomic_Memory_Order.Acquire)
-
 	idx: u32
+	// log.debug("popping")
 	for {
 		real, steal := unpack(head)
 		tail := q.tail
 		if real == tail {
+			// no item to pop
 			return
 		}
 		next_real := wrapping_add(real, 1)
@@ -174,6 +176,7 @@ queue_pop :: proc(q: ^Local_Queue($T, $S)) -> (res: T, ok: bool) {
 		} else {
 			next = pack(next_real, steal)
 		}
+		log.debug("getting actual")
 		actual, oka := sync.atomic_compare_exchange_strong_explicit(
 			&q.head,
 			head,
@@ -181,6 +184,7 @@ queue_pop :: proc(q: ^Local_Queue($T, $S)) -> (res: T, ok: bool) {
 			sync.Atomic_Memory_Order.Acq_Rel,
 			sync.Atomic_Memory_Order.Acquire,
 		)
+		log.debug("got actual")
 		if oka {
 			idx = real & MASK
 			break

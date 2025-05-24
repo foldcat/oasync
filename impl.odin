@@ -36,19 +36,27 @@ steal :: proc(this: ^Worker) {
 	queue_steal_into(&this.localq, &worker.localq)
 }
 
-run_task :: proc(t: Task) {
-	worker := get_worker()
+compute_blocking_count :: proc(workers: []Worker) -> (count: u8) {
+	for worker in workers {
+		log.debug(worker.id)
+		if worker.is_blocking {
+			count += 1
+		}
+	}
+	return
+}
 
-	current_count := sync.atomic_load_explicit(
-		&worker.coordinator.blocking_count,
-		sync.Atomic_Memory_Order.Relaxed,
-	)
+run_task :: proc(t: Task) {
+	log.debug("running task")
+	worker := get_worker()
+	log.debug("got worker")
+	current_count := compute_blocking_count(worker.coordinator.workers[:])
+	log.debug("current_count is", current_count)
 	if t.is_blocking {
 		if current_count >= worker.coordinator.max_blocking_count {
 			spawn_task(t)
 			return
 		}
-		sync.atomic_add(&worker.coordinator.blocking_count, 1)
 		worker.is_blocking = true
 	}
 
@@ -56,6 +64,9 @@ run_task :: proc(t: Task) {
 		start_time := time.tick_now()
 	}
 	beh := t.effect(t.supply)
+
+	log.debug("executed the task")
+
 	when ODIN_DEBUG {
 		end_time := time.tick_now()
 		diff := time.tick_diff(start_time, end_time)
@@ -72,7 +83,6 @@ run_task :: proc(t: Task) {
 	}
 
 	if t.is_blocking {
-		sync.atomic_sub(&worker.coordinator.blocking_count, 1)
 		worker.is_blocking = false
 	}
 
@@ -96,7 +106,7 @@ worker_runloop :: proc(t: ^thread.Thread) {
 	log.debug("awaiting barrier started")
 	sync.barrier_wait(worker.barrier_ref)
 
-	log.debug("runloop started")
+	log.debug("runloop started for worker id", worker.id)
 	for {
 		// wipe the arena every loop
 		arena := worker.arena
@@ -106,7 +116,7 @@ worker_runloop :: proc(t: ^thread.Thread) {
 		//log.debug("pop")
 		tsk, exist := queue_pop(&worker.localq)
 		if exist {
-			// log.debug("pulled from local queue, running")
+			log.debug("pulled from local queue, running")
 			run_task(tsk)
 
 			continue
@@ -184,7 +194,7 @@ make_task :: proc(p: proc(_: rawptr) -> Behavior, data: rawptr, is_blocking := f
 _init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
 	log.debug("starting worker system")
 	coord.worker_count = cfg.worker_count
-	coord.max_blocking_count = cast(i8)cfg.blocking_worker_count
+	coord.max_blocking_count = cfg.blocking_worker_count
 
 	id_gen: u8
 
@@ -192,6 +202,7 @@ _init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
 	log.debug("setting up global channel")
 
 	barrier := sync.Barrier{}
+	log.info("starting worker system with", cfg.worker_count, "workers")
 	sync.barrier_init(&barrier, int(cfg.worker_count))
 
 	coord.globalq = make_gqueue(Task)
@@ -214,7 +225,6 @@ _init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
 
 		thrd := setup_thread(&worker)
 		thread.start(thrd)
-		log.debug("started", i, "th worker")
 	}
 
 	// chan send freezes indefinitely when nothing is listening to it

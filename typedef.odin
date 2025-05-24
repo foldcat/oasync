@@ -68,8 +68,7 @@ Coordinator :: struct {
 	globalq:            Global_Queue(Task),
 	steal_count:        u8,
 	max_steal_count:    u8,
-	max_blocking_count: i8,
-	blocking_count:     i8,
+	max_blocking_count: u8,
 }
 
 /*
