@@ -160,7 +160,6 @@ queue_push_overflow :: proc(
 queue_pop :: proc(q: ^Local_Queue($T, $S)) -> (res: T, ok: bool) {
 	head := sync.atomic_load_explicit(&q.head, sync.Atomic_Memory_Order.Acquire)
 	idx: u32
-	// log.debug("popping")
 	for {
 		real, steal := unpack(head)
 		tail := q.tail
@@ -176,7 +175,6 @@ queue_pop :: proc(q: ^Local_Queue($T, $S)) -> (res: T, ok: bool) {
 		} else {
 			next = pack(next_real, steal)
 		}
-		log.debug("getting actual")
 		actual, oka := sync.atomic_compare_exchange_strong_explicit(
 			&q.head,
 			head,
@@ -184,7 +182,6 @@ queue_pop :: proc(q: ^Local_Queue($T, $S)) -> (res: T, ok: bool) {
 			sync.Atomic_Memory_Order.Acq_Rel,
 			sync.Atomic_Memory_Order.Acquire,
 		)
-		log.debug("got actual")
 		if oka {
 			idx = real & MASK
 			break

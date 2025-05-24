@@ -36,20 +36,23 @@ steal :: proc(this: ^Worker) {
 	queue_steal_into(&this.localq, &worker.localq)
 }
 
-compute_blocking_count :: proc(workers: []Worker) -> (count: u8) {
+compute_blocking_count :: proc(workers: []Worker) -> int {
+	log.debug("worker count", len(workers))
+	count := 0
 	for worker in workers {
+		log.debug(worker.is_blocking)
 		if worker.is_blocking {
 			count += 1
 		}
 	}
-	return
+	return count
 }
 
 run_task :: proc(t: Task) {
 	log.debug("running task")
 	worker := get_worker()
 	log.debug("got worker")
-	current_count := compute_blocking_count(worker.coordinator.workers[:])
+	current_count := sync.atomic_load(&worker.coordinator.current_blocking_count)
 	log.debug("current_count is", current_count)
 	if t.is_blocking {
 		if current_count >= worker.coordinator.max_blocking_count {
@@ -57,6 +60,7 @@ run_task :: proc(t: Task) {
 			return
 		}
 		worker.is_blocking = true
+		sync.atomic_add(&worker.coordinator.current_blocking_count, 1)
 	}
 
 	when ODIN_DEBUG {
@@ -82,6 +86,7 @@ run_task :: proc(t: Task) {
 	}
 
 	if t.is_blocking {
+		sync.atomic_sub(&worker.coordinator.current_blocking_count, 1)
 		worker.is_blocking = false
 	}
 
@@ -216,7 +221,7 @@ _init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
 	}
 
 	for i in 0 ..< required_worker_count {
-		worker := Worker{}
+		worker := &coord.workers[i]
 
 		worker.id = id_gen
 		id_gen += 1
@@ -225,9 +230,7 @@ _init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
 		worker.barrier_ref = &barrier
 		worker.coordinator = coord
 
-		coord.workers[i] = worker
-
-		thrd := setup_thread(&worker)
+		thrd := setup_thread(worker)
 		thread.start(thrd)
 	}
 
@@ -236,7 +239,7 @@ _init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
 
 	// theats the main thread as a worker too
 	if cfg.use_main_thread == true {
-		main_worker := Worker{}
+		main_worker := &coord.workers[required_worker_count]
 		main_worker.barrier_ref = &barrier
 		main_worker.coordinator = coord
 
@@ -249,12 +252,11 @@ _init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
 
 		context.allocator = arena_alloc
 
-		ref_carrier := new_clone(Ref_Carrier{worker = &main_worker, user_ptr = nil})
+		ref_carrier := new_clone(Ref_Carrier{worker = main_worker, user_ptr = nil})
 		context.user_ptr = ref_carrier
 
 		shim_ptr: ^thread.Thread // not gonna use it
 
-		coord.workers[required_worker_count] = main_worker
 		coord.worker_count += 1
 
 		worker_runloop(shim_ptr)

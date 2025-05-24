@@ -68,16 +68,14 @@ init_oa :: proc(
 	init_fn: proc(_: rawptr) -> Behavior,
 	init_fn_arg: rawptr = nil,
 ) {
-	mworkers: u8 = cast(u8)max_workers
-	mblocking: u8 = cast(u8)max_blocking
-
+	max_workers := max_workers // make it mutable
 	if max_workers == 0 {
-		mworkers = cast(u8)os.processor_core_count()
+		max_workers = os.processor_core_count()
 	}
 
 	cfg := Config {
-		worker_count          = mworkers,
-		blocking_worker_count = mblocking,
+		worker_count          = max_workers,
+		blocking_worker_count = max_blocking,
 		use_main_thread       = use_main_thread,
 	}
 

@@ -63,12 +63,13 @@ executing tasks
 should not be accessed
 */
 Coordinator :: struct {
-	workers:            []Worker,
-	worker_count:       u8,
-	globalq:            Global_Queue(Task),
-	steal_count:        u8,
-	max_steal_count:    u8,
-	max_blocking_count: u8,
+	workers:                []Worker,
+	worker_count:           int,
+	globalq:                Global_Queue(Task),
+	steal_count:            int,
+	max_steal_count:        int,
+	max_blocking_count:     int,
+	current_blocking_count: int,
 }
 
 /*
@@ -78,9 +79,9 @@ on its behavior
 */
 Config :: struct {
 	// amount of threads to run tasks
-	worker_count:          u8,
+	worker_count:          int,
 	// amount of threads to run blocking tasks
-	blocking_worker_count: u8,
+	blocking_worker_count: int,
 	// use the main thread as a worker 
 	// prevents immediate exit of a program
 	use_main_thread:       bool,
