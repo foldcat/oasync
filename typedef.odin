@@ -63,7 +63,7 @@ executing tasks
 should not be accessed
 */
 Coordinator :: struct {
-	workers:            [dynamic]Worker,
+	workers:            []Worker,
 	worker_count:       u8,
 	globalq:            Global_Queue(Task),
 	steal_count:        u8,

@@ -38,7 +38,6 @@ steal :: proc(this: ^Worker) {
 
 compute_blocking_count :: proc(workers: []Worker) -> (count: u8) {
 	for worker in workers {
-		log.debug(worker.id)
 		if worker.is_blocking {
 			count += 1
 		}
@@ -196,6 +195,10 @@ _init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
 	coord.worker_count = cfg.worker_count
 	coord.max_blocking_count = cfg.blocking_worker_count
 
+	workers := make([]Worker, int(cfg.worker_count))
+	coord.workers = workers
+
+
 	id_gen: u8
 
 	// set up the global chan
@@ -212,7 +215,7 @@ _init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
 		required_worker_count -= 1
 	}
 
-	for i in 1 ..= required_worker_count {
+	for i in 0 ..< required_worker_count {
 		worker := Worker{}
 
 		worker.id = id_gen
@@ -221,16 +224,14 @@ _init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
 		// load in the barrier
 		worker.barrier_ref = &barrier
 		worker.coordinator = coord
-		append(&coord.workers, worker)
+
+		coord.workers[i] = worker
 
 		thrd := setup_thread(&worker)
 		thread.start(thrd)
 	}
 
-	// chan send freezes indefinitely when nothing is listening to it
-	// thus it is placed here
 	log.debug("sending first task")
-
 	gqueue_push(&coord.globalq, init_task)
 
 	// theats the main thread as a worker too
@@ -243,8 +244,8 @@ _init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
 
 		arena_alloc := vmem.arena_allocator(&main_worker.arena)
 
+		log.debug("the id of the main worker is", id_gen)
 		main_worker.id = id_gen
-		id_gen += 1
 
 		context.allocator = arena_alloc
 
@@ -253,7 +254,7 @@ _init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
 
 		shim_ptr: ^thread.Thread // not gonna use it
 
-		append(&coord.workers, main_worker)
+		coord.workers[required_worker_count] = main_worker
 		coord.worker_count += 1
 
 		worker_runloop(shim_ptr)
