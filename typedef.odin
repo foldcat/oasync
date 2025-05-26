@@ -69,7 +69,6 @@ Coordinator :: struct {
 	steal_count:            int,
 	max_steal_count:        int,
 	max_blocking_count:     int,
-	current_blocking_count: int,
 }
 
 /*

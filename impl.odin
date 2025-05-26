@@ -33,6 +33,7 @@ steal :: proc(this: ^Worker) {
 	}
 
 	// steal half of the text once we find one
+	// log.debug("worker", get_worker_id(), "is stealing from", worker.id)
 	queue_steal_into(&this.localq, &worker.localq)
 }
 
@@ -40,7 +41,7 @@ compute_blocking_count :: proc(workers: []Worker) -> int {
 	log.debug("worker count", len(workers))
 	count := 0
 	for worker in workers {
-		log.debug(worker.is_blocking)
+		// log.debug(worker.is_blocking)
 		if worker.is_blocking {
 			count += 1
 		}
@@ -49,18 +50,17 @@ compute_blocking_count :: proc(workers: []Worker) -> int {
 }
 
 run_task :: proc(t: Task) {
-	log.debug("running task")
+	log.debug("running task", t)
 	worker := get_worker()
 	log.debug("got worker")
-	current_count := sync.atomic_load(&worker.coordinator.current_blocking_count)
-	log.debug("current_count is", current_count)
+	current_count := compute_blocking_count(worker.coordinator.workers)
+	log.debug(get_worker_id(), "current_count is", current_count)
 	if t.is_blocking {
 		if current_count >= worker.coordinator.max_blocking_count {
 			spawn_task(t)
 			return
 		}
 		worker.is_blocking = true
-		sync.atomic_add(&worker.coordinator.current_blocking_count, 1)
 	}
 
 	when ODIN_DEBUG {
@@ -86,7 +86,6 @@ run_task :: proc(t: Task) {
 	}
 
 	if t.is_blocking {
-		sync.atomic_sub(&worker.coordinator.current_blocking_count, 1)
 		worker.is_blocking = false
 	}
 

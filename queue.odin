@@ -24,7 +24,7 @@ Local_Queue :: struct($T: typeid, $S: int) {
 
 when ODIN_DEBUG {
 	// helps catch edge cases
-	LOCAL_QUEUE_SIZE :: 8
+	LOCAL_QUEUE_SIZE :: 4
 } else {
 	// must be the 2^n so we can do a bitmask for 
 	// circular behavior, in this case we use
@@ -61,18 +61,22 @@ wrapping_add :: proc(lhs, rhs: u32) -> u32 {
 	return lhs + rhs
 }
 
-queue_remaining_slots :: proc(q: ^Local_Queue($T, $S)) -> u32 {
-	_, steal := unpack(sync.atomic_load_explicit(&q.head, sync.Atomic_Memory_Order.Acquire))
-	tail := sync.atomic_load_explicit(&q.tail, sync.Atomic_Memory_Order.Acquire)
-	return LOCAL_QUEUE_SIZE - wrapping_add(tail, steal)
-
+_len :: proc(head: u32, tail: u32) -> u32 {
+	return wrapping_sub(tail, head)
 }
 
 queue_length :: proc(q: ^Local_Queue($T, $S)) -> u32 {
 	head, _ := unpack(sync.atomic_load_explicit(&q.head, sync.Atomic_Memory_Order.Acquire))
-	tail := sync.atomic_load_explicit(&q.tail, sync.Atomic_Memory_Order.Acquire)
-	return wrapping_sub(tail, head)
+	tail := q.tail
+	return _len(head, tail)
 }
+
+queue_remaining_slots :: proc(q: ^Local_Queue($T, $S)) -> u32 {
+	_, steal := unpack(sync.atomic_load_explicit(&q.head, sync.Atomic_Memory_Order.Acquire))
+	tail := sync.atomic_load_explicit(&q.tail, sync.Atomic_Memory_Order.Acquire)
+	return LOCAL_QUEUE_SIZE - _len(tail, steal)
+}
+
 
 queue_is_empty :: proc(q: ^Local_Queue($T, $S)) -> bool {
 	return queue_length(q) == 0
@@ -121,7 +125,7 @@ push_back_finish :: proc(q: ^Local_Queue($T, $S), task: T, tail: u32) {
 
 NUM_TASK_TAKEN: u32 : u32(LOCAL_QUEUE_SIZE / 2)
 
-queue_push_overflow :: proc(
+queue_push_overflow :: #force_no_inline proc(
 	task: $T,
 	head, tail: u32,
 	overflow: ^Global_Queue(T),

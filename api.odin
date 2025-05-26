@@ -37,6 +37,14 @@ unsafe_gob :: proc(coord: ^Coordinator, p: proc(_: rawptr) -> Behavior, data: ra
 }
 
 /*
+obtains the worker id when executed inside a task
+might segfault otherwise
+*/
+get_worker_id :: proc() -> u8 {
+  worker := get_worker()
+  return worker.id
+}
+/*
 starts a coordinator based on arguments passed in
 
 coord: you are responisble for providing a coordinator, note 
