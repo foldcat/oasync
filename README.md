@@ -2,13 +2,9 @@
 
 ![badge](https://img.shields.io/badge/documentation%20taken%20seriously-ff7eb6)
 
-Welcome to new-blocking-behavior branch. This branch aims to 
-allow each thread workers to switch between blocking and 
-non blocking state instead of using a seprate thread pool 
-to keep track of blocking. I am currently debugging the dreaded 
-race condition caused by this project and the race condition  
-disappears when I enable logging. This is taking a toll on 
-my sanity.
+Welcome to the `new-blocking-behavior` branch. This branch contains a complete 
+recode of certain features, and *will* produce runtime crashes. Seek the `master`
+branch for a less-likely-to-crash codebase. 
 
 M:N multithreading for Odin. The end goal is to implement virtual threads that 
 automatically and quickly parallelize tasks across several os threads.
