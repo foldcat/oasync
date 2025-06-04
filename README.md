@@ -161,14 +161,8 @@ at the same time, ensuring there is always rooms for non blocking
 tasks to run.
 
 #### passing in arugments
-We replaced the default context.scheduler with an arena allocator.
-The arena allocator `vmem.arena_free_all(itself)` upon finishing 
-every task. This frees everything allocated on the heap. As for 
-the stack, Odin natrually frees everything upon task finishing.
-You already know we pass in arguments via a `rawptr`, so natrually 
-we use the `context.temp_allocator` to allocate arguments we 
-wish to pass into another task.
-
+It is trival to pass arguments into tasks. As Odin is a simple 
+language, this could only be done via a `rawptr`.
 ```odin
 foo :: proc(a: rawptr) -> oa.Behavior {
 	arg := cast(^string)a

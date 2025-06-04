@@ -49,10 +49,8 @@ compute_blocking_count :: proc(workers: []Worker) -> int {
 	return count
 }
 
-run_task :: proc(t: Task) {
-	log.debug("running task", t)
-	worker := get_worker()
-	log.debug("got worker")
+run_task :: proc(t: Task, worker: ^Worker) {
+	log.debug("running task for", worker.id)
 	current_count := compute_blocking_count(worker.coordinator.workers)
 	log.debug(get_worker_id(), "current_count is", current_count)
 	if t.is_blocking {
@@ -111,16 +109,12 @@ worker_runloop :: proc(t: ^thread.Thread) {
 
 	log.debug("runloop started for worker id", worker.id)
 	for {
-		// wipe the arena every loop
-		arena := worker.arena
-		defer vmem.arena_free_all(&arena)
-
 		// tasks in local queue gets scheduled first
 		//log.debug("pop")
 		tsk, exist := queue_pop(&worker.localq)
 		if exist {
 			log.debug("pulled from local queue, running")
-			run_task(tsk)
+			run_task(tsk, worker)
 
 			continue
 		}
@@ -131,7 +125,7 @@ worker_runloop :: proc(t: ^thread.Thread) {
 		tsk, exist = gqueue_pop(&worker.coordinator.globalq)
 		if exist {
 			log.debug("got item from global channel")
-			run_task(tsk)
+			run_task(tsk, worker)
 
 			continue
 		}
@@ -174,11 +168,6 @@ setup_thread :: proc(worker: ^Worker) -> ^thread.Thread {
 
 
 	ctx := context
-
-	log.debug("creating arena alloc")
-	arena_alloc := vmem.arena_allocator(&worker.arena)
-
-	ctx.allocator = arena_alloc
 
 	ref_carrier := new_clone(Ref_Carrier{worker = worker, user_ptr = nil})
 	ctx.user_ptr = ref_carrier
@@ -244,12 +233,8 @@ _init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
 
 		main_worker.localq = make_queue(Task, LOCAL_QUEUE_SIZE)
 
-		arena_alloc := vmem.arena_allocator(&main_worker.arena)
-
 		log.debug("the id of the main worker is", id_gen)
 		main_worker.id = id_gen
-
-		context.allocator = arena_alloc
 
 		ref_carrier := new_clone(Ref_Carrier{worker = main_worker, user_ptr = nil})
 		context.user_ptr = ref_carrier

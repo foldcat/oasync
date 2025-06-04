@@ -11,7 +11,6 @@ Worker :: struct {
 	run_next:    Task,
 	id:          u8,
 	coordinator: ^Coordinator,
-	arena:       vmem.Arena,
 	is_blocking: bool,
 	is_stealing: bool,
 }
