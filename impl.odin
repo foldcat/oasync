@@ -15,30 +15,27 @@ get_worker :: proc() -> ^Worker {
 	return carrier.worker
 }
 
-steal :: proc(this: ^Worker) {
+steal :: proc(this: ^Worker) -> bool {
 	// steal from a random worker
 	worker: Worker
 
-	worker = rand.choice(this.coordinator.workers[:])
-
-	if worker.id == this.id {
-		// same id, and don't steal from self,
-		return
+	// limit the times so this doesn't hog forever
+	for {
+		worker = rand.choice(this.coordinator.workers[:])
+		if worker.id == this.id {
+			// same id, and don't steal from self,
+			continue
+		}
+		break
 	}
 
-	// we don't steal from queues that doesn't have items
-	queue_length := queue_length(&worker.localq)
-	if queue_length == 0 {
-		return
-	}
-
-	// steal half of the text once we find one
 	// log.debug("worker", get_worker_id(), "is stealing from", worker.id)
-	queue_steal_into(&this.localq, &worker.localq)
+	_, ok := queue_steal_into(&worker.localq, &this.localq)
+	return ok
 }
 
 compute_blocking_count :: proc(workers: []Worker) -> int {
-	log.debug("worker count", len(workers))
+	// log.debug("worker count", len(workers))
 	count := 0
 	for worker in workers {
 		// log.debug(worker.is_blocking)
@@ -50,9 +47,8 @@ compute_blocking_count :: proc(workers: []Worker) -> int {
 }
 
 run_task :: proc(t: Task, worker: ^Worker) {
-	log.debug("running task for", worker.id)
 	current_count := compute_blocking_count(worker.coordinator.workers)
-	log.debug(get_worker_id(), "current_count is", current_count)
+	// log.debug(get_worker_id(), "current_count is", current_count)
 	if t.is_blocking {
 		if current_count >= worker.coordinator.max_blocking_count {
 			spawn_task(t)
@@ -66,7 +62,7 @@ run_task :: proc(t: Task, worker: ^Worker) {
 	}
 	beh := t.effect(t.supply)
 
-	log.debug("executed the task")
+	log.debug("executed the task for", get_worker_id())
 
 	when ODIN_DEBUG {
 		end_time := time.tick_now()
@@ -110,10 +106,9 @@ worker_runloop :: proc(t: ^thread.Thread) {
 	log.debug("runloop started for worker id", worker.id)
 	for {
 		// tasks in local queue gets scheduled first
-		//log.debug("pop")
 		tsk, exist := queue_pop(&worker.localq)
 		if exist {
-			log.debug("pulled from local queue, running")
+			// log.debug("pulled from local queue, running")
 			run_task(tsk, worker)
 
 			continue
@@ -137,7 +132,10 @@ worker_runloop :: proc(t: ^thread.Thread) {
 		scount := sync.atomic_load(&worker.coordinator.steal_count)
 		if scount < (worker.coordinator.worker_count / 2) { 	// throttle stealing to half the total thread count
 			sync.atomic_add(&worker.coordinator.steal_count, 1) // register the stealing
-			steal(worker) // start stealing
+			did_steal := steal(worker) // start stealing
+			if did_steal {
+				log.debug(worker.id, "did steal")
+			}
 			sync.atomic_sub(&worker.coordinator.steal_count, 1) // register the stealing
 		}
 

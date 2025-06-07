@@ -262,6 +262,7 @@ queue_steal_into2 :: proc(q: ^Local_Queue($T, $S), dst: ^Local_Queue(T, S), dst_
 		)
 		if ok {
 			n = num
+      break
 		} else {
 			prev_packed = res
 		}
