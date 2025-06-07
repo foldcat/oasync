@@ -36,15 +36,15 @@ MASK: u32 : LOCAL_QUEUE_SIZE - 1
 
 
 // unpack a u64 into the real position and the stealer position
-unpack :: proc(pack: u64) -> (real, steal: u32) {
-	real = u32((pack >> 32) & 0xFFFFFFFF)
-	steal = u32(pack & 0xFFFFFFFF)
+unpack :: proc(pack: u64) -> (steal, real: u32) {
+	steal = u32((pack >> 32) & 0xFFFFFFFF)
+	real = u32(pack & 0xFFFFFFFF)
 	return real, steal
 }
 
 // pack the real position and the stealer position into a singular u64
 pack :: proc(real, steal: u32) -> u64 {
-	return (u64(real) << 32) | u64(steal)
+	return (u64(steal) << 32) | u64(real)
 }
 
 make_queue :: proc($T: typeid, $S: int) -> Local_Queue(T, S) {
@@ -65,21 +65,27 @@ _len :: proc(head: u32, tail: u32) -> u32 {
 	return wrapping_sub(tail, head)
 }
 
-queue_length :: proc(q: ^Local_Queue($T, $S)) -> u32 {
-	head, _ := unpack(sync.atomic_load_explicit(&q.head, sync.Atomic_Memory_Order.Acquire))
+queue_local_length :: proc(q: ^Local_Queue($T, $S)) -> u32 {
+	_, head := unpack(sync.atomic_load_explicit(&q.head, sync.Atomic_Memory_Order.Acquire))
 	tail := q.tail
 	return _len(head, tail)
 }
 
+queue_nonlocal_length :: proc(q: ^Local_Queue($T, $S)) -> u32 {
+	_, head := unpack(sync.atomic_load_explicit(&q.head, sync.Atomic_Memory_Order.Acquire))
+	tail := sync.atomic_load_explicit(&q.tail, sync.Atomic_Memory_Order.Acquire)
+	return _len(head, tail)
+}
+
 queue_remaining_slots :: proc(q: ^Local_Queue($T, $S)) -> u32 {
-	_, steal := unpack(sync.atomic_load_explicit(&q.head, sync.Atomic_Memory_Order.Acquire))
+	steal, real := unpack(sync.atomic_load_explicit(&q.head, sync.Atomic_Memory_Order.Acquire))
 	tail := sync.atomic_load_explicit(&q.tail, sync.Atomic_Memory_Order.Acquire)
 	return LOCAL_QUEUE_SIZE - _len(tail, steal)
 }
 
 
 queue_is_empty :: proc(q: ^Local_Queue($T, $S)) -> bool {
-	return queue_length(q) == 0
+	return queue_nonlocal_length(q) == 0
 }
 
 // push a singular task into a local queue, should the queue overflow, 
@@ -89,7 +95,7 @@ queue_push_back_or_overflow :: proc(q: ^Local_Queue($T, $S), item: T, overflow: 
 	task := item
 	for {
 		head := sync.atomic_load_explicit(&q.head, sync.Atomic_Memory_Order.Acquire)
-		real, steal := unpack(head)
+		steal, real := unpack(head)
 		// only updated by producer, so it needn't be atomic~
 		inner_tail := q.tail
 		if wrapping_sub(inner_tail, steal) < LOCAL_QUEUE_SIZE {
@@ -165,7 +171,7 @@ queue_pop :: proc(q: ^Local_Queue($T, $S)) -> (res: T, ok: bool) {
 	head := sync.atomic_load_explicit(&q.head, sync.Atomic_Memory_Order.Acquire)
 	idx: u32
 	for {
-		real, steal := unpack(head)
+		steal, real := unpack(head)
 		tail := q.tail
 		if real == tail {
 			// no item to pop
@@ -177,7 +183,7 @@ queue_pop :: proc(q: ^Local_Queue($T, $S)) -> (res: T, ok: bool) {
 		if steal == real {
 			next = pack(next_real, next_real)
 		} else {
-			next = pack(next_real, steal)
+			next = pack(steal, next_real)
 		}
 		actual, oka := sync.atomic_compare_exchange_strong_explicit(
 			&q.head,
@@ -233,7 +239,7 @@ queue_steal_into2 :: proc(q: ^Local_Queue($T, $S), dst: ^Local_Queue(T, S), dst_
 
 	n: u32
 	for {
-		src_head_real, src_head_steal := unpack(prev_packed)
+		src_head_steal, src_head_real := unpack(prev_packed)
 		src_tail := sync.atomic_load_explicit(&q.tail, sync.Atomic_Memory_Order.Acquire)
 
 		if src_head_steal != src_head_real {
@@ -251,7 +257,7 @@ queue_steal_into2 :: proc(q: ^Local_Queue($T, $S), dst: ^Local_Queue(T, S), dst_
 		}
 
 		steal_to := wrapping_add(src_head_real, num)
-		next_packed = pack(src_head_real, steal_to)
+		next_packed = pack(src_head_steal, steal_to)
 
 		res, ok := sync.atomic_compare_exchange_strong_explicit(
 			&q.head,
@@ -262,11 +268,12 @@ queue_steal_into2 :: proc(q: ^Local_Queue($T, $S), dst: ^Local_Queue(T, S), dst_
 		)
 		if ok {
 			n = num
-      break
+			break
 		} else {
 			prev_packed = res
 		}
 	}
+
 	first, _ := unpack(next_packed)
 	for i in 0 ..< n {
 		src_pos := wrapping_add(first, i)
@@ -276,11 +283,15 @@ queue_steal_into2 :: proc(q: ^Local_Queue($T, $S), dst: ^Local_Queue(T, S), dst_
 		dst_idx := dst_pos & MASK
 
 		task := q.buffer[src_idx]
+		log.debug(get_worker_id(), "stolen task id", task.id, "number:", n)
+
 		dst.buffer[dst_idx] = task
 	}
+
 	prev_packed = next_packed
+
 	for {
-		head, _ := unpack(prev_packed)
+		_, head := unpack(prev_packed)
 		next_packed := pack(head, head)
 		res, ok := sync.atomic_compare_exchange_strong_explicit(
 			&q.head,

@@ -60,7 +60,7 @@ run_task :: proc(t: Task, worker: ^Worker) {
 	when ODIN_DEBUG {
 		start_time := time.tick_now()
 	}
-	beh := t.effect(t.supply)
+	beh := t.effect(t.arg)
 
 	log.debug("executed the task for", get_worker_id())
 
@@ -133,9 +133,9 @@ worker_runloop :: proc(t: ^thread.Thread) {
 		if scount < (worker.coordinator.worker_count / 2) { 	// throttle stealing to half the total thread count
 			sync.atomic_add(&worker.coordinator.steal_count, 1) // register the stealing
 			did_steal := steal(worker) // start stealing
-			if did_steal {
-				log.debug(worker.id, "did steal")
-			}
+			// if did_steal {
+			// 	log.debug(worker.id, "did steal")
+			// }
 			sync.atomic_sub(&worker.coordinator.steal_count, 1) // register the stealing
 		}
 
@@ -177,8 +177,13 @@ setup_thread :: proc(worker: ^Worker) -> ^thread.Thread {
 
 }
 
+// doesn't need to be thread safe
+// this is for debug only
+id_gen: int
+
 make_task :: proc(p: proc(_: rawptr) -> Behavior, data: rawptr, is_blocking := false) -> Task {
-	return Task{effect = p, supply = data, is_blocking = is_blocking}
+	id_gen += 1
+	return Task{effect = p, arg = data, is_blocking = is_blocking, id = id_gen}
 }
 
 _init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {

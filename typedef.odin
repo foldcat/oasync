@@ -52,8 +52,10 @@ Task :: struct {
 	// void * generic
 	// sometimes i wish for a more complex type system
 	effect:      proc(input: rawptr) -> Behavior,
-	supply:      rawptr,
+	arg:         rawptr,
 	is_blocking: bool,
+	// for debug
+	id:          int,
 }
 
 /* 
@@ -62,12 +64,12 @@ executing tasks
 should not be accessed
 */
 Coordinator :: struct {
-	workers:                []Worker,
-	worker_count:           int,
-	globalq:                Global_Queue(Task),
-	steal_count:            int,
-	max_steal_count:        int,
-	max_blocking_count:     int,
+	workers:            []Worker,
+	worker_count:       int,
+	globalq:            Global_Queue(Task),
+	steal_count:        int,
+	max_steal_count:    int,
+	max_blocking_count: int,
 }
 
 /*
