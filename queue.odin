@@ -314,6 +314,7 @@ queue_steal_into2 :: proc(q: ^Local_Queue($T, $S), dst: ^Local_Queue(T, S), dst_
 Global_Queue :: struct($T: typeid) {
 	head:  ^Node(T),
 	last:  ^Node(T),
+	size:  u64,
 	mutex: sync.Mutex,
 }
 
@@ -335,6 +336,7 @@ gqueue_push_mutexless :: proc(q: ^Global_Queue($T), item: T) {
 		q.last.next = new_node
 		q.last = new_node
 	}
+	q.size += 1
 }
 
 gqueue_push :: proc(q: ^Global_Queue($T), item: T) {
@@ -348,7 +350,9 @@ gqueue_push :: proc(q: ^Global_Queue($T), item: T) {
 gqueue_pop :: proc(q: ^Global_Queue($T)) -> (res: T, ok: bool) {
 	sync.mutex_lock(&q.mutex)
 	defer sync.mutex_unlock(&q.mutex)
-
+	if q.size == 0 {
+		return
+	}
 	if q.head == nil {
 		return
 	}
@@ -361,5 +365,6 @@ gqueue_pop :: proc(q: ^Global_Queue($T)) -> (res: T, ok: bool) {
 	}
 
 	free(temp)
+	q.size -= 1
 	return data, true
 }
