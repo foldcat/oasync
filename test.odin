@@ -1,5 +1,6 @@
 package oasync
 
+import "core:log"
 import "core:testing"
 
 @(test)
@@ -9,15 +10,15 @@ test_gqueue_basic :: proc(t: ^testing.T) {
 	gqueue_push(&q, 20)
 
 	val, ok := gqueue_pop(&q)
-	testing.expect(t, ok == true, "Expected ok to be true")
+	testing.expect(t, ok, "Expected ok to be true")
 	testing.expect(t, val == 10, "Expected value 10")
 
 	val, ok = gqueue_pop(&q)
-	testing.expect(t, ok == true, "Expected ok to be true")
+	testing.expect(t, ok, "Expected ok to be true")
 	testing.expect(t, val == 20, "Expected value 20")
 
 	val, ok = gqueue_pop(&q)
-	testing.expect(t, ok == false, "Expected ok to be false")
+	testing.expect(t, !ok, "Expected ok to be false")
 }
 
 
@@ -25,7 +26,7 @@ test_gqueue_basic :: proc(t: ^testing.T) {
 test_gqueue_empty :: proc(t: ^testing.T) {
 	q := make_gqueue(string)
 	val, ok := gqueue_pop(&q)
-	testing.expect(t, ok == false, "Expected ok to be false on empty queue")
+	testing.expect(t, !ok, "Expected ok to be false on empty queue")
 	testing.expect(t, val == "", "Expected zero value on empty queue")
 }
 
@@ -39,10 +40,27 @@ test_gqueue_multiple_push_pop :: proc(t: ^testing.T) {
 
 	for i in 0 ..= 100 {
 		val, ok := gqueue_pop(&q)
-		testing.expect(t, ok == true, "Expected ok to be true")
+		testing.expect(t, ok, "Expected ok to be true")
 		testing.expect(t, val == f32(i) * 2.5, "Expected value to match pushed value")
 	}
 
 	val, ok := gqueue_pop(&q)
-	testing.expect(t, ok == false, "Expected ok to be false after all elements popped")
+	testing.expect(t, !ok, "Expected ok to be false after all elements popped")
+}
+
+@(test)
+test_lqueue_push_overflow :: proc(t: ^testing.T) {
+	q := make_queue(int, 4)
+	gq := make_gqueue(int)
+	for i in 1 ..= 5 {
+		queue_push_back_or_overflow(&q, i, &gq)
+	}
+	res, ok := gqueue_pop(&gq)
+	testing.expect(t, ok, "Expected successful pop as overflow")
+	testing.expect(t, res == 1, "Expected correct value of pop")
+	res, ok = gqueue_pop(&gq)
+	testing.expect(t, ok, "expected successful pop as overflow")
+	testing.expect(t, res == 2, "Expected correct value of pop")
+	res, ok = gqueue_pop(&gq)
+	testing.expect(t, !ok, "expected unsuccessful pop as overflow")
 }
