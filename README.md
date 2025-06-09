@@ -112,6 +112,7 @@ core :: proc(_: rawptr) -> oa.Behavior {
 
 nextproc :: proc(_: rawptr) -> oa.Behavior {
 	fmt.println("nextproc")
+	return oa.B_None{}
 }
 ```
 
