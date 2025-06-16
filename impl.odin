@@ -15,23 +15,26 @@ get_worker :: proc() -> ^Worker {
 	return carrier.worker
 }
 
-steal :: proc(this: ^Worker) -> bool {
-	// steal from a random worker
-	worker: Worker
+steal :: proc(this: ^Worker) -> (tsk: Task, ok: bool) {
+	num := len(this.coordinator.workers)
+
+	// choose the worker to start searching at
+	start := int(rand.int31_max(i32(num)))
 
 	// limit the times so this doesn't hog forever
-	for {
-		worker = rand.choice(this.coordinator.workers[:])
+	for i in 0 ..< num {
+		i := (start + i) % num
+		worker := this.coordinator.workers[i]
 		if worker.id == this.id {
 			// same id, and don't steal from self,
 			continue
 		}
-		break
+		task, ok := queue_steal_into(&worker.localq, &this.localq)
+		if ok {
+			return task, true
+		}
 	}
-
-	// log.debug("worker", get_worker_id(), "is stealing from", worker.id)
-	_, ok := queue_steal_into(&worker.localq, &this.localq)
-	return ok
+	return
 }
 
 compute_blocking_count :: proc(workers: []Worker) -> int {
@@ -141,11 +144,12 @@ worker_runloop :: proc(t: ^thread.Thread) {
 		scount := sync.atomic_load(&worker.coordinator.steal_count)
 		if scount < (worker.coordinator.worker_count / 2) { 	// throttle stealing to half the total thread count
 			sync.atomic_add(&worker.coordinator.steal_count, 1) // register the stealing
-			did_steal := steal(worker) // start stealing
-			// if did_steal {
-			// 	log.debug(worker.id, "did steal")
-			// }
+			tsk, succ := steal(worker) // start stealing
 			sync.atomic_sub(&worker.coordinator.steal_count, 1) // register the stealing
+			if succ {
+				run_task(&tsk, worker)
+
+			}
 		}
 
 	}

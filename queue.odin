@@ -283,7 +283,7 @@ queue_steal_into2 :: proc(q: ^Local_Queue($T, $S), dst: ^Local_Queue(T, S), dst_
 		dst_idx := dst_pos & MASK
 
 		task := q.buffer[src_idx]
-		log.debug(get_worker_id(), "stolen task id", task.id, "with the number:", n)
+		// log.debug(get_worker_id(), "stolen task id", task.id, "with the number:", n)
 
 		dst.buffer[dst_idx] = task
 	}
