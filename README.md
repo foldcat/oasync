@@ -201,6 +201,16 @@ main :: proc() {
 instead, it comes with performance panelity. Avoid this as much 
 as possible.
 
+#### shutdown
+Shutting down oasync can be done by executing the following 
+in a virtual task.
+```odin
+oa.oa_shutdown()
+```
+Should `use_main_thread` be true, this will wait for the main 
+thread to terminate instead of calling `thread.terminate`, 
+causing additional wait time for the procedure to yield.
+
 #### context system
 To spawn tasks, oasync injects info into `context.user_ptr`. 
 This means that you should NEVER change it. Should you still 
@@ -212,6 +222,22 @@ core :: proc(_: rawptr) -> oa.Behavior {
 	// ONLY access the user_ptr field 
 	// do NOT access other fields in Ref_Carrier
 	ptr.user_ptr := ...
+	return oa.B_None{}
+}
+```
+
+However, please note that the context in a task will not be 
+carried over to another task spawned. See below for a 
+demonstration.
+```odin
+core :: proc(_: rawptr) -> oa.Behavior {
+	context.user_index = 1
+	oa.go(stuff)
+	return oa.B_None{}
+}
+
+stuff :: proc(a: rawptr) -> oa.Behavior {
+	fmt.println(context.user_index) // 0
 	return oa.B_None{}
 }
 ```
