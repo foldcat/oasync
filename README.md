@@ -236,7 +236,7 @@ core :: proc(_: rawptr) -> oa.Behavior {
 	return oa.B_None{}
 }
 
-stuff :: proc(a: rawptr) -> oa.Behavior {
+stuff :: proc(_: rawptr) -> oa.Behavior {
 	fmt.println(context.user_index) // 0
 	return oa.B_None{}
 }
