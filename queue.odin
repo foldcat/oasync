@@ -39,11 +39,11 @@ MASK: u32 : LOCAL_QUEUE_SIZE - 1
 unpack :: proc(pack: u64) -> (steal, real: u32) {
 	steal = u32((pack >> 32) & 0xFFFFFFFF)
 	real = u32(pack & 0xFFFFFFFF)
-	return real, steal
+	return steal, real
 }
 
 // pack the real position and the stealer position into a singular u64
-pack :: proc(real, steal: u32) -> u64 {
+pack :: proc(steal, real: u32) -> u64 {
 	return (u64(steal) << 32) | u64(real)
 }
 
@@ -80,7 +80,7 @@ queue_nonlocal_length :: proc(q: ^Local_Queue($T, $S)) -> u32 {
 queue_remaining_slots :: proc(q: ^Local_Queue($T, $S)) -> u32 {
 	steal, real := unpack(sync.atomic_load_explicit(&q.head, sync.Atomic_Memory_Order.Acquire))
 	tail := sync.atomic_load_explicit(&q.tail, sync.Atomic_Memory_Order.Acquire)
-	return LOCAL_QUEUE_SIZE - _len(tail, steal)
+	return LOCAL_QUEUE_SIZE - _len(steal, tail)
 }
 
 
