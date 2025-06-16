@@ -57,6 +57,7 @@ Task :: struct {
 	effect:      proc(input: rawptr) -> Behavior,
 	arg:         rawptr,
 	is_blocking: bool,
+	is_done:     bool,
 	// for debug
 	id:          int,
 }

@@ -46,12 +46,17 @@ compute_blocking_count :: proc(workers: []Worker) -> int {
 	return count
 }
 
-run_task :: proc(t: Task, worker: ^Worker) {
+run_task :: proc(t: ^Task, worker: ^Worker) {
+	if t.is_done {
+		log.debug("WARNING: ATTEMPTING TO RE-EXECUTE TASKS THAT ARE DONE")
+		return
+	}
+
 	current_count := compute_blocking_count(worker.coordinator.workers)
 	// log.debug(get_worker_id(), "current_count is", current_count)
 	if t.is_blocking {
 		if current_count >= worker.coordinator.max_blocking_count {
-			spawn_task(t)
+			spawn_task(t^)
 			return
 		}
 		worker.is_blocking = true
@@ -61,6 +66,7 @@ run_task :: proc(t: Task, worker: ^Worker) {
 		start_time := time.tick_now()
 	}
 	beh := t.effect(t.arg)
+	t.is_done = true
 
 	log.debug("executed the task for", get_worker_id())
 
@@ -113,7 +119,7 @@ worker_runloop :: proc(t: ^thread.Thread) {
 		tsk, exist := queue_pop(&worker.localq)
 		if exist {
 			// log.debug("pulled from local queue, running")
-			run_task(tsk, worker)
+			run_task(&tsk, worker)
 			continue
 		}
 
@@ -123,7 +129,7 @@ worker_runloop :: proc(t: ^thread.Thread) {
 		tsk, exist = gqueue_pop(&worker.coordinator.globalq)
 		if exist {
 			log.debug("got item from global channel")
-			run_task(tsk, worker)
+			run_task(&tsk, worker)
 
 			continue
 		}
