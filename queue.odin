@@ -346,10 +346,7 @@ gqueue_push :: proc(q: ^Global_Queue($T), item: T) {
 	gqueue_push_mutexless(q, item)
 }
 
-
-gqueue_pop :: proc(q: ^Global_Queue($T)) -> (res: T, ok: bool) {
-	sync.mutex_lock(&q.mutex)
-	defer sync.mutex_unlock(&q.mutex)
+gqueue_pop_mutexless :: proc(q: ^Global_Queue($T)) -> (res: T, ok: bool) {
 	if q.size == 0 {
 		return
 	}
@@ -367,4 +364,22 @@ gqueue_pop :: proc(q: ^Global_Queue($T)) -> (res: T, ok: bool) {
 	free(temp)
 	q.size -= 1
 	return data, true
+}
+
+gqueue_pop :: proc(q: ^Global_Queue($T)) -> (res: T, ok: bool) {
+	sync.mutex_lock(&q.mutex)
+	defer sync.mutex_unlock(&q.mutex)
+	return gqueue_pop_mutexless(q)
+}
+
+gqueue_delete :: proc(q: ^Global_Queue($T)) {
+	sync.mutex_lock(&q.mutex)
+	defer sync.mutex_unlock(&q.mutex)
+	has_item := true
+	for has_item {
+		log.debug("gqueue pop mutexless delete")
+		_, ok := gqueue_pop_mutexless(q)
+		log.debug(ok)
+		has_item = ok
+	}
 }

@@ -41,9 +41,17 @@ obtains the worker id when executed inside a task
 might segfault otherwise
 */
 get_worker_id :: proc() -> u8 {
-  worker := get_worker()
-  return worker.id
+	worker := get_worker()
+	return worker.id
 }
+
+/*
+shuts down the coordinator
+*/
+oa_shutdown :: proc() {
+	_shutdown()
+}
+
 /*
 starts a coordinator based on arguments passed in
 

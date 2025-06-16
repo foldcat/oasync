@@ -85,8 +85,7 @@ run_task :: proc(t: Task, worker: ^Worker) {
 
 	switch behavior in beh {
 	case B_None:
-		// do nothing
-		return
+	// do nothing
 	case B_Cb:
 		// call back
 		go(behavior.effect, behavior.supply)
@@ -105,12 +104,16 @@ worker_runloop :: proc(t: ^thread.Thread) {
 
 	log.debug("runloop started for worker id", worker.id)
 	for {
+		if !worker.coordinator.is_running {
+			// termination
+			return
+		}
+
 		// tasks in local queue gets scheduled first
 		tsk, exist := queue_pop(&worker.localq)
 		if exist {
 			// log.debug("pulled from local queue, running")
 			run_task(tsk, worker)
-
 			continue
 		}
 
@@ -140,6 +143,7 @@ worker_runloop :: proc(t: ^thread.Thread) {
 		}
 
 	}
+	log.debug("runloop stopped for worker id", worker.id)
 }
 
 
@@ -172,6 +176,8 @@ setup_thread :: proc(worker: ^Worker) -> ^thread.Thread {
 
 	thrd.init_context = ctx
 
+	worker.thread_obj = thrd
+
 	log.debug("built thread")
 	return thrd
 
@@ -186,14 +192,29 @@ make_task :: proc(p: proc(_: rawptr) -> Behavior, data: rawptr, is_blocking := f
 	return Task{effect = p, arg = data, is_blocking = is_blocking, id = id_gen}
 }
 
+_shutdown :: proc() {
+	worker := get_worker()
+	worker.coordinator.is_running = false
+	for worker in worker.coordinator.workers {
+		if !worker.hogs_main_thread {
+			log.debug("shutting down", worker.id)
+			thread.terminate(worker.thread_obj, 0)
+		}
+	}
+	log.debug("deleting workers")
+	delete(worker.coordinator.workers)
+	log.debug("deleting global queue")
+	gqueue_delete(&worker.coordinator.globalq)
+}
+
 _init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
 	log.debug("starting worker system")
 	coord.worker_count = cfg.worker_count
 	coord.max_blocking_count = cfg.blocking_worker_count
+	coord.is_running = true
 
 	workers := make([]Worker, int(cfg.worker_count))
 	coord.workers = workers
-
 
 	id_gen: u8
 
@@ -233,6 +254,7 @@ _init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
 		main_worker := &coord.workers[required_worker_count]
 		main_worker.barrier_ref = &barrier
 		main_worker.coordinator = coord
+		main_worker.hogs_main_thread = true
 
 		main_worker.localq = make_queue(Task, LOCAL_QUEUE_SIZE)
 

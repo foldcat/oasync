@@ -2,17 +2,20 @@ package oasync
 
 import vmem "core:mem/virtual"
 import "core:sync"
+import "core:thread"
 
 // assigned to each thread
 @(private)
 Worker :: struct {
-	barrier_ref: ^sync.Barrier,
-	localq:      Local_Queue(Task, LOCAL_QUEUE_SIZE),
-	run_next:    Task,
-	id:          u8,
-	coordinator: ^Coordinator,
-	is_blocking: bool,
-	is_stealing: bool,
+	barrier_ref:      ^sync.Barrier,
+	thread_obj:       ^thread.Thread,
+	localq:           Local_Queue(Task, LOCAL_QUEUE_SIZE),
+	run_next:         Task,
+	id:               u8,
+	coordinator:      ^Coordinator,
+	is_blocking:      bool,
+	is_stealing:      bool,
+	hogs_main_thread: bool,
 }
 
 // behavior dictates what to do *after* the task is done, 
@@ -65,6 +68,7 @@ should not be accessed
 */
 Coordinator :: struct {
 	workers:            []Worker,
+	is_running:         bool,
 	worker_count:       int,
 	globalq:            Global_Queue(Task),
 	steal_count:        int,
