@@ -72,8 +72,6 @@ Coordinator :: struct {
 	is_running:         bool,
 	worker_count:       int,
 	globalq:            Global_Queue(Task),
-	steal_count:        int,
-	max_steal_count:    int,
 	max_blocking_count: int,
 }
 

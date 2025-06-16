@@ -50,6 +50,9 @@ compute_blocking_count :: proc(workers: []Worker) -> int {
 }
 
 run_task :: proc(t: ^Task, worker: ^Worker) {
+	// if it is running a task, it isn't stealing
+	worker.is_stealing = false
+
 	if t.is_done {
 		log.debug("WARNING: ATTEMPTING TO RE-EXECUTE TASKS THAT ARE DONE")
 		return
@@ -104,6 +107,15 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 	}
 }
 
+calc_steal_couunt :: proc(current_worker: ^Worker) -> (count: int) {
+	for worker in current_worker.coordinator.workers {
+		if worker.is_stealing {
+			count += 1
+		}
+	}
+	return
+}
+
 // event loop that every worker runs
 worker_runloop :: proc(t: ^thread.Thread) {
 	worker := get_worker()
@@ -137,18 +149,20 @@ worker_runloop :: proc(t: ^thread.Thread) {
 			continue
 		}
 
+		scount := calc_steal_couunt(worker)
 		// global queue seems to be empty too, enter stealing mode 
-		// increment the stealing count
-		// this part needs A LOT OF work
-		//log.debug("steal")
-		scount := sync.atomic_load(&worker.coordinator.steal_count)
-		if scount < (worker.coordinator.worker_count / 2) { 	// throttle stealing to half the total thread count
-			sync.atomic_add(&worker.coordinator.steal_count, 1) // register the stealing
-			tsk, succ := steal(worker) // start stealing
-			sync.atomic_sub(&worker.coordinator.steal_count, 1) // register the stealing
-			if succ {
-				run_task(&tsk, worker)
 
+		// throttle stealing to half the total thread count
+		if scount < (worker.coordinator.worker_count / 2) {
+			worker.is_stealing = true
+		}
+
+		// only steal when allowed
+		if worker.is_stealing {
+			tsk, succ := steal(worker) // start stealing
+			if succ {
+				log.debug("success stealing")
+				run_task(&tsk, worker)
 			}
 		}
 
