@@ -64,3 +64,28 @@ test_lqueue_push_overflow :: proc(t: ^testing.T) {
 	res, ok = gqueue_pop(&gq)
 	testing.expect(t, !ok, "expected unsuccessful pop as overflow")
 }
+
+@(test)
+test_steal :: proc(t: ^testing.T) {
+	q1 := make_queue(int, 4)
+	q2 := make_queue(int, 4)
+	gq := make_gqueue(int)
+
+	for i in 1 ..= 3 {
+		queue_push_back_or_overflow(&q1, i, &gq)
+	}
+
+	queue_steal_into(&q1, &q2)
+	log.debug(q1, unpack(q1.head))
+	log.debug(q2, unpack(q2.head))
+
+	item, ok := queue_pop(&q1)
+	log.debug(item, ok)
+	item, ok = queue_pop(&q1)
+	log.debug(item, ok)
+
+	item, ok = queue_pop(&q2)
+	log.debug(item, ok)
+	item, ok = queue_pop(&q2)
+	log.debug(item, ok)
+}
