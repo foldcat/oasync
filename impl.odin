@@ -30,7 +30,6 @@ steal :: proc(this: ^Worker) -> (tsk: Task, ok: bool) {
 
 	// choose the worker to start searching at
 	start := int(lcg(this, num))
-	log.debug(start)
 
 	// limit the times so this doesn't hog forever
 	for i in 0 ..< num {
