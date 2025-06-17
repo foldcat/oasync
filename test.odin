@@ -3,6 +3,8 @@ package oasync
 import "core:log"
 import "core:testing"
 
+// tests are ment to be run with -debug flag enabled
+
 @(test)
 test_gqueue_basic :: proc(t: ^testing.T) {
 	q := make_gqueue(int)
@@ -10,15 +12,15 @@ test_gqueue_basic :: proc(t: ^testing.T) {
 	gqueue_push(&q, 20)
 
 	val, ok := gqueue_pop(&q)
-	testing.expect(t, ok, "Expected ok to be true")
-	testing.expect(t, val == 10, "Expected value 10")
+	testing.expect(t, ok, "expected ok to be true")
+	testing.expect_value(t, val, 10)
 
 	val, ok = gqueue_pop(&q)
-	testing.expect(t, ok, "Expected ok to be true")
-	testing.expect(t, val == 20, "Expected value 20")
+	testing.expect(t, ok, "expected ok to be true")
+	testing.expect_value(t, val, 20)
 
 	val, ok = gqueue_pop(&q)
-	testing.expect(t, !ok, "Expected ok to be false")
+	testing.expect(t, !ok, "expected ok to be false")
 }
 
 
@@ -26,8 +28,7 @@ test_gqueue_basic :: proc(t: ^testing.T) {
 test_gqueue_empty :: proc(t: ^testing.T) {
 	q := make_gqueue(string)
 	val, ok := gqueue_pop(&q)
-	testing.expect(t, !ok, "Expected ok to be false on empty queue")
-	testing.expect(t, val == "", "Expected zero value on empty queue")
+	testing.expect(t, !ok, "expected ok to be false on empty queue")
 }
 
 @(test)
@@ -40,12 +41,12 @@ test_gqueue_multiple_push_pop :: proc(t: ^testing.T) {
 
 	for i in 0 ..= 100 {
 		val, ok := gqueue_pop(&q)
-		testing.expect(t, ok, "Expected ok to be true")
-		testing.expect(t, val == f32(i) * 2.5, "Expected value to match pushed value")
+		testing.expect(t, ok, "expected ok to be true")
+		testing.expect_value(t, val, f32(i) * 2.5)
 	}
 
 	val, ok := gqueue_pop(&q)
-	testing.expect(t, !ok, "Expected ok to be false after all elements popped")
+	testing.expect(t, !ok, "expected ok to be false after all elements popped")
 }
 
 @(test)
@@ -56,11 +57,11 @@ test_lqueue_push_overflow :: proc(t: ^testing.T) {
 		queue_push_back_or_overflow(&q, i, &gq)
 	}
 	res, ok := gqueue_pop(&gq)
-	testing.expect(t, ok, "Expected successful pop as overflow")
-	testing.expect(t, res == 1, "Expected correct value of pop")
+	testing.expect(t, ok, "expected successful pop as overflow")
+	testing.expect_value(t, res, 1)
 	res, ok = gqueue_pop(&gq)
 	testing.expect(t, ok, "expected successful pop as overflow")
-	testing.expect(t, res == 2, "Expected correct value of pop")
+	testing.expect_value(t, res, 2)
 	res, ok = gqueue_pop(&gq)
 	testing.expect(t, !ok, "expected unsuccessful pop as overflow")
 }
@@ -76,19 +77,19 @@ test_steal :: proc(t: ^testing.T) {
 	}
 
 	item, ok := queue_steal_into(&q1, &q2)
-	testing.expect(t, ok, "Expected success of stealing")
-	testing.expect(t, item == 2, "Expected correct return")
+	testing.expect(t, ok, "expected success of stealing")
+	testing.expect_value(t, item, 2)
 
 	item, ok = queue_pop(&q1)
-	testing.expect(t, ok, "Expected success of popping")
-	testing.expect(t, item == 3, "Expected correct return")
+	testing.expect(t, ok, "expected success of popping")
+	testing.expect_value(t, item, 3)
 
 	item, ok = queue_pop(&q1)
-	testing.expect(t, !ok, "Expected emptiness")
+	testing.expect(t, !ok, "expected emptiness")
 
 	item, ok = queue_pop(&q2)
-	testing.expect(t, ok, "Expected success of popping")
-	testing.expect(t, item == 1, "Expected correct return")
+	testing.expect(t, ok, "expected success of popping")
+	testing.expect_value(t, item, 1)
 	item, ok = queue_pop(&q2)
-	testing.expect(t, !ok, "Expected emptiness")
+	testing.expect(t, !ok, "expected emptiness")
 }
