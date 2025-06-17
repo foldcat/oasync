@@ -75,17 +75,20 @@ test_steal :: proc(t: ^testing.T) {
 		queue_push_back_or_overflow(&q1, i, &gq)
 	}
 
-	queue_steal_into(&q1, &q2)
-	log.debug(q1, unpack(q1.head))
-	log.debug(q2, unpack(q2.head))
+	item, ok := queue_steal_into(&q1, &q2)
+	testing.expect(t, ok, "Expected success of stealing")
+	testing.expect(t, item == 2, "Expected correct return")
 
-	item, ok := queue_pop(&q1)
-	log.debug(item, ok)
 	item, ok = queue_pop(&q1)
-	log.debug(item, ok)
+	testing.expect(t, ok, "Expected success of popping")
+	testing.expect(t, item == 3, "Expected correct return")
+
+	item, ok = queue_pop(&q1)
+	testing.expect(t, !ok, "Expected emptiness")
 
 	item, ok = queue_pop(&q2)
-	log.debug(item, ok)
+	testing.expect(t, ok, "Expected success of popping")
+	testing.expect(t, item == 1, "Expected correct return")
 	item, ok = queue_pop(&q2)
-	log.debug(item, ok)
+	testing.expect(t, !ok, "Expected emptiness")
 }
