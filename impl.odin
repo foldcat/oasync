@@ -47,6 +47,7 @@ steal :: proc(this: ^Worker) -> (tsk: Task, ok: bool) {
 		}
 		task, ok := queue_steal_into(&worker.localq, &this.localq)
 		if ok {
+			log.debug("worker id", this.id, "stolen task id", task.id, "from worker id", worker.id)
 			return task, true
 		}
 	}
@@ -89,8 +90,6 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 	}
 	beh := t.effect(t.arg)
 	t.is_done = true
-
-	log.debug("executed the task for", get_worker_id())
 
 	when ODIN_DEBUG {
 		end_time := time.tick_now()
@@ -177,7 +176,6 @@ worker_runloop :: proc(t: ^thread.Thread) {
 		if worker.is_stealing {
 			tsk, succ := steal(worker) // start stealing
 			if succ {
-				log.debug("success stealing")
 				run_task(&tsk, worker)
 			}
 		}

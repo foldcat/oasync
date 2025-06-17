@@ -243,6 +243,7 @@ queue_steal_into2 :: proc(q: ^Local_Queue($T, $S), dst: ^Local_Queue(T, S), dst_
 		src_tail := sync.atomic_load_explicit(&q.tail, sync.Atomic_Memory_Order.Acquire)
 
 		if src_head_steal != src_head_real {
+			log.debug("concurrent stealer detected")
 			// another thread is concurrently stealing 
 			// we shouldn't interrupt...
 			return 0
