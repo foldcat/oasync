@@ -15,11 +15,22 @@ get_worker :: proc() -> ^Worker {
 	return carrier.worker
 }
 
+lcg :: proc(worker: ^Worker, max: int) -> i32 {
+	m :: 25253
+	a :: 148251
+	c :: 10007
+
+	worker.rng_seed = (a * worker.rng_seed + c) % m
+
+	return abs(worker.rng_seed) % i32(max)
+}
+
 steal :: proc(this: ^Worker) -> (tsk: Task, ok: bool) {
 	num := len(this.coordinator.workers)
 
 	// choose the worker to start searching at
-	start := int(rand.int31_max(i32(num)))
+	start := int(lcg(this, num))
+	log.debug(start)
 
 	// limit the times so this doesn't hog forever
 	for i in 0 ..< num {
@@ -188,6 +199,7 @@ setup_thread :: proc(worker: ^Worker) -> ^thread.Thread {
 
 	log.debug("init queue")
 	worker.localq = make_queue(Task, LOCAL_QUEUE_SIZE)
+	worker.rng_seed = rand.int31()
 
 	// weird name to avoid collision
 	thrd := thread.create(worker_runloop) // make a worker thread
@@ -279,6 +291,7 @@ _init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
 		main_worker.barrier_ref = &barrier
 		main_worker.coordinator = coord
 		main_worker.hogs_main_thread = true
+		main_worker.rng_seed = rand.int31()
 
 		main_worker.localq = make_queue(Task, LOCAL_QUEUE_SIZE)
 

@@ -16,6 +16,7 @@ Worker :: struct {
 	is_blocking:      bool,
 	is_stealing:      bool,
 	hogs_main_thread: bool,
+	rng_seed:         i32,
 }
 
 // behavior dictates what to do *after* the task is done, 
