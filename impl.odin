@@ -15,6 +15,12 @@ get_worker :: proc() -> ^Worker {
 	return carrier.worker
 }
 
+// fast random number generator via linear congruential 
+// algorithm
+// seed is pulled from worker, thus only works 
+// inside workers
+// by default the seed is generated via a rand.int31()
+// and then acted on by the lcg
 lcg :: proc(worker: ^Worker, max: int) -> i32 {
 	m :: 25253
 	a :: 148251
