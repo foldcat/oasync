@@ -243,7 +243,7 @@ queue_steal_into2 :: proc(q: ^Local_Queue($T, $S), dst: ^Local_Queue(T, S), dst_
 		src_tail := sync.atomic_load_explicit(&q.tail, sync.Atomic_Memory_Order.Acquire)
 
 		if src_head_steal != src_head_real {
-			log.debug("concurrent stealer detected")
+			trace("concurrent stealer detected")
 			// another thread is concurrently stealing 
 			// we shouldn't interrupt...
 			return 0
@@ -284,7 +284,7 @@ queue_steal_into2 :: proc(q: ^Local_Queue($T, $S), dst: ^Local_Queue(T, S), dst_
 		dst_idx := dst_pos & MASK
 
 		task := q.buffer[src_idx]
-		// log.debug(get_worker_id(), "stolen task id", task.id, "with the number:", n)
+		// trace(get_worker_id(), "stolen task id", task.id, "with the number:", n)
 
 		dst.buffer[dst_idx] = task
 	}
@@ -378,9 +378,9 @@ gqueue_delete :: proc(q: ^Global_Queue($T)) {
 	defer sync.mutex_unlock(&q.mutex)
 	has_item := true
 	for has_item {
-		log.debug("gqueue pop mutexless delete")
+		trace("gqueue pop mutexless delete")
 		_, ok := gqueue_pop_mutexless(q)
-		log.debug(ok)
+		trace(ok)
 		has_item = ok
 	}
 }

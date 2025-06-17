@@ -47,7 +47,7 @@ steal :: proc(this: ^Worker) -> (tsk: Task, ok: bool) {
 		}
 		task, ok := queue_steal_into(&worker.localq, &this.localq)
 		if ok {
-			log.debug("worker id", this.id, "stolen task id", task.id, "from worker id", worker.id)
+			trace("worker id", this.id, "stolen task id", task.id, "from worker id", worker.id)
 			return task, true
 		}
 	}
@@ -55,10 +55,10 @@ steal :: proc(this: ^Worker) -> (tsk: Task, ok: bool) {
 }
 
 compute_blocking_count :: proc(workers: []Worker) -> int {
-	// log.debug("worker count", len(workers))
+	// trace("worker count", len(workers))
 	count := 0
 	for worker in workers {
-		// log.debug(worker.is_blocking)
+		// trace(worker.is_blocking)
 		if worker.is_blocking {
 			count += 1
 		}
@@ -71,12 +71,12 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 	worker.is_stealing = false
 
 	if t.is_done {
-		log.debug("WARNING: ATTEMPTING TO RE-EXECUTE TASKS THAT ARE DONE")
+		trace("WARNING: ATTEMPTING TO RE-EXECUTE TASKS THAT ARE DONE")
 		return
 	}
 
 	current_count := compute_blocking_count(worker.coordinator.workers)
-	// log.debug(get_worker_id(), "current_count is", current_count)
+	// trace(get_worker_id(), "current_count is", current_count)
 	if t.is_blocking {
 		if current_count >= worker.coordinator.max_blocking_count {
 			spawn_task(t^)
@@ -135,10 +135,10 @@ calc_steal_couunt :: proc(current_worker: ^Worker) -> (count: int) {
 worker_runloop :: proc(t: ^thread.Thread) {
 	worker := get_worker()
 
-	log.debug("awaiting barrier started")
+	trace("awaiting barrier started")
 	sync.barrier_wait(worker.barrier_ref)
 
-	log.debug("runloop started for worker id", worker.id)
+	trace("runloop started for worker id", worker.id)
 	for {
 		if !worker.coordinator.is_running {
 			// termination
@@ -148,17 +148,17 @@ worker_runloop :: proc(t: ^thread.Thread) {
 		// tasks in local queue gets scheduled first
 		tsk, exist := queue_pop(&worker.localq)
 		if exist {
-			// log.debug("pulled from local queue, running")
+			// trace("pulled from local queue, running")
 			run_task(&tsk, worker)
 			continue
 		}
 
 		// local queue seems to be empty at this point, take a look 
 		// at the global channel
-		//log.debug("chan recv")
+		//trace("chan recv")
 		tsk, exist = gqueue_pop(&worker.coordinator.globalq)
 		if exist {
-			log.debug("got item from global channel")
+			trace("got item from global channel")
 			run_task(&tsk, worker)
 
 			continue
@@ -181,7 +181,7 @@ worker_runloop :: proc(t: ^thread.Thread) {
 		}
 
 	}
-	log.debug("runloop stopped for worker id", worker.id)
+	trace("runloop stopped for worker id", worker.id)
 }
 
 
@@ -198,9 +198,9 @@ spawn_unsafe_task :: proc(task: Task, coord: ^Coordinator) {
 }
 
 setup_thread :: proc(worker: ^Worker) -> ^thread.Thread {
-	log.debug("setting up thread for", worker.id)
+	trace("setting up thread for", worker.id)
 
-	log.debug("init queue")
+	trace("init queue")
 	worker.localq = make_queue(Task, LOCAL_QUEUE_SIZE)
 	worker.rng_seed = rand.int31()
 
@@ -217,7 +217,7 @@ setup_thread :: proc(worker: ^Worker) -> ^thread.Thread {
 
 	worker.thread_obj = thrd
 
-	log.debug("built thread")
+	trace("built thread")
 	return thrd
 
 }
@@ -236,21 +236,22 @@ _shutdown :: proc() {
 	worker.coordinator.is_running = false
 	for worker in worker.coordinator.workers {
 		if !worker.hogs_main_thread {
-			log.debug("shutting down", worker.id)
+			trace("shutting down", worker.id)
 			thread.terminate(worker.thread_obj, 0)
 		}
 	}
-	log.debug("deleting workers")
+	trace("deleting workers")
 	delete(worker.coordinator.workers)
-	log.debug("deleting global queue")
+	trace("deleting global queue")
 	gqueue_delete(&worker.coordinator.globalq)
 }
 
 _init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
-	log.debug("starting worker system")
+	trace("starting worker system")
 	coord.worker_count = cfg.worker_count
 	coord.max_blocking_count = cfg.blocking_worker_count
 	coord.is_running = true
+	debug_trace_print = cfg.debug_trace_print
 
 	workers := make([]Worker, int(cfg.worker_count))
 	coord.workers = workers
@@ -258,7 +259,7 @@ _init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
 	id_gen: u8
 
 	// set up the global chan
-	log.debug("setting up global channel")
+	trace("setting up global channel")
 
 	barrier := sync.Barrier{}
 	log.info("starting worker system with", cfg.worker_count, "workers")
@@ -285,7 +286,7 @@ _init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
 		thread.start(thrd)
 	}
 
-	log.debug("sending first task")
+	trace("sending first task")
 	gqueue_push(&coord.globalq, init_task)
 
 	// theats the main thread as a worker too
@@ -298,7 +299,7 @@ _init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
 
 		main_worker.localq = make_queue(Task, LOCAL_QUEUE_SIZE)
 
-		log.debug("the id of the main worker is", id_gen)
+		trace("the id of the main worker is", id_gen)
 		main_worker.id = id_gen
 
 		ref_carrier := new_clone(Ref_Carrier{worker = main_worker, user_ptr = nil})

@@ -75,12 +75,16 @@ yielding immediately to grant control back to the thread executing
 this procedure
 
 init_fn: the first function to execute when oasync is initialized
+
+debug_trace_print: whether to print debug info or not, works 
+only when -debug flag is passed into the compiler
 */
 init_oa :: proc(
 	coord: ^Coordinator,
 	max_workers := 0,
 	max_blocking := 1,
 	use_main_thread := true,
+	debug_trace_print := false,
 	init_fn: proc(_: rawptr) -> Behavior,
 	init_fn_arg: rawptr = nil,
 ) {
@@ -93,6 +97,7 @@ init_oa :: proc(
 		worker_count          = max_workers,
 		blocking_worker_count = max_blocking,
 		use_main_thread       = use_main_thread,
+		debug_trace_print     = debug_trace_print,
 	}
 
 	init_task := make_task(init_fn, init_fn_arg)

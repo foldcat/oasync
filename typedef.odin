@@ -89,6 +89,9 @@ Config :: struct {
 	// use the main thread as a worker 
 	// prevents immediate exit of a program
 	use_main_thread:       bool,
+	// should oasync print debug info
+	// only works with -debug compiler flag enabled
+	debug_trace_print:     bool,
 }
 
 /*
