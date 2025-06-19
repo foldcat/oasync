@@ -1,7 +1,9 @@
 package oasync
 
 import "core:log"
+import "core:sync"
 import "core:testing"
+import "core:thread"
 
 // tests are ment to be run with -debug flag enabled
 
@@ -92,4 +94,105 @@ test_steal :: proc(t: ^testing.T) {
 	testing.expect_value(t, item, 1)
 	item, ok = queue_pop(&q2)
 	testing.expect(t, !ok, "expected emptiness")
+}
+
+// have you ever wonder what madness is
+@(test)
+test_steal_multithreaded :: proc(t: ^testing.T) {
+	Worker_Data :: struct {
+		wg:      ^sync.Wait_Group,
+		barrier: ^sync.Barrier,
+		lq:      Local_Queue(int, 4),
+		gq:      ^Global_Queue(int),
+		opp:     ^Worker_Data,
+	}
+	provider_worker :: proc(t: ^thread.Thread) {
+		worker_data := cast(^Worker_Data)t.data
+		for i in 1 ..= 3 {
+			queue_push_back_or_overflow(&worker_data.lq, i, worker_data.gq)
+		}
+		sync.barrier_wait(worker_data.barrier)
+
+		sync.wait_group_done(worker_data.wg)
+	}
+	stealer_worker :: proc(t: ^thread.Thread) {
+		worker_data := cast(^Worker_Data)t.data
+		sync.barrier_wait(worker_data.barrier)
+		item, ok := queue_steal_into(&worker_data.opp.lq, &worker_data.lq)
+		log.info("stealer id", t.user_index, "stealer got", item, ok)
+		sync.wait_group_done(worker_data.wg)
+	}
+
+	wg: sync.Wait_Group
+	barrier: sync.Barrier
+	gq := make_gqueue(int)
+	sync.barrier_init(&barrier, 3)
+	provider := thread.create(provider_worker)
+	provider.init_context = context
+	stealer1 := thread.create(stealer_worker)
+	stealer1.init_context = context
+	stealer1.user_index = 1
+	stealer2 := thread.create(stealer_worker)
+	stealer2.init_context = context
+	stealer2.user_index = 2
+
+	provider.data = &Worker_Data{wg = &wg, barrier = &barrier, lq = make_queue(int, 4), gq = &gq}
+	stealer1.data =
+	&Worker_Data {
+		wg = &wg,
+		barrier = &barrier,
+		lq = make_queue(int, 4),
+		gq = &gq,
+		opp = cast(^Worker_Data)provider.data,
+	}
+	stealer2.data =
+	&Worker_Data {
+		wg = &wg,
+		barrier = &barrier,
+		lq = make_queue(int, 4),
+		gq = &gq,
+		opp = cast(^Worker_Data)provider.data,
+	}
+
+	sync.wait_group_add(&wg, 3)
+
+	thread.start(provider)
+	thread.start(stealer1)
+	thread.start(stealer2)
+
+	sync.wait_group_wait(&wg)
+
+	provider_data := cast(^Worker_Data)provider.data
+	log.info(
+		"provider local queue status> head (steal, real):",
+		unpack(provider_data.lq.head),
+		"tail:",
+		provider_data.lq.tail,
+		"buffer",
+		provider_data.lq.buffer,
+	)
+
+	stealer1_data := cast(^Worker_Data)stealer1.data
+	log.info(
+		"stealer 1 local queue status> head (steal, real):",
+		unpack(stealer1_data.lq.head),
+		"tail:",
+		stealer1_data.lq.tail,
+		"buffer",
+		stealer1_data.lq.buffer,
+	)
+
+	stealer2_data := cast(^Worker_Data)stealer1.data
+	log.info(
+		"stealer 2 local queue status> head (steal, real):",
+		unpack(stealer2_data.lq.head),
+		"tail:",
+		stealer2_data.lq.tail,
+		"buffer",
+		stealer2_data.lq.buffer,
+	)
+
+	thread.destroy(provider)
+	thread.destroy(stealer1)
+	thread.destroy(stealer2)
 }
