@@ -195,14 +195,12 @@ test_steal_multithreaded :: proc(t: ^testing.T) {
 	log.info("start popping stealer 1")
 	for {
 		res := queue_pop(&stealer1_data.lq) or_break
-		log.debug(res)
 		log.info("stealer 1 poped", res)
 	}
 
 	log.info("start popping stealer 2")
 	for {
 		res := queue_pop(&stealer2_data.lq) or_break
-		log.debug(res)
 		log.info("stealer 2 poped", res)
 	}
 
