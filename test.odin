@@ -94,6 +94,9 @@ test_steal :: proc(t: ^testing.T) {
 	testing.expect_value(t, item, 1)
 	item, ok = queue_pop(&q2)
 	testing.expect(t, !ok, "expected emptiness")
+
+	item, ok = queue_steal_into(&q1, &q2)
+	testing.expect(t, !ok, "expected failing to steal")
 }
 
 // have you ever wonder what madness is
@@ -191,6 +194,12 @@ test_steal_multithreaded :: proc(t: ^testing.T) {
 		"buffer",
 		stealer2_data.lq.buffer,
 	)
+
+	log.info("start popping provider")
+	for {
+		res := queue_pop(&provider_data.lq) or_break
+		log.info("provider poped", res)
+	}
 
 	log.info("start popping stealer 1")
 	for {
