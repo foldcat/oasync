@@ -2,29 +2,22 @@ package oasync
 
 import vmem "core:mem/virtual"
 import "core:sync"
-
-// 2 ^ 8
-@(private)
-LOCAL_QUEUE_SIZE :: 256
-
-@(private)
-Worker_Type :: enum {
-	Generic,
-	Blocking,
-}
+import "core:thread"
 
 // assigned to each thread
 @(private)
 Worker :: struct {
-	barrier_ref: ^sync.Barrier,
-	localq:      Local_Queue(Task, LOCAL_QUEUE_SIZE),
-	run_next:    Task,
-	id:          u8,
-	coordinator: ^Coordinator,
-	arena:       vmem.Arena,
-	type:        Worker_Type,
+	barrier_ref:      ^sync.Barrier,
+	thread_obj:       ^thread.Thread,
+	localq:           Local_Queue(^Task),
+	run_next:         Task,
+	id:               u8,
+	coordinator:      ^Coordinator,
+	is_blocking:      bool,
+	is_stealing:      bool,
+	hogs_main_thread: bool,
+	rng_seed:         i32,
 }
-
 
 // behavior dictates what to do *after* the task is done, 
 // for example, callbacks
@@ -62,8 +55,12 @@ Btype :: enum {
 Task :: struct {
 	// void * generic
 	// sometimes i wish for a more complex type system
-	effect: proc(input: rawptr) -> Behavior,
-	supply: rawptr,
+	effect:      proc(input: rawptr) -> Behavior,
+	arg:         rawptr,
+	is_blocking: bool,
+	is_done:     bool,
+	// for debug
+	id:          int,
 }
 
 /* 
@@ -72,13 +69,11 @@ executing tasks
 should not be accessed
 */
 Coordinator :: struct {
-	workers:               [dynamic]Worker,
-	worker_count:          u8,
-	blocking_workers:      [dynamic]Worker,
-	blocking_worker_count: u8,
-	globalq:               Global_Queue(Task),
-	global_blockingq:      Global_Queue(Task),
-	search_count:          u8,
+	workers:            []Worker,
+	is_running:         bool,
+	worker_count:       int,
+	globalq:            Global_Queue(^Task),
+	max_blocking_count: int,
 }
 
 /*
@@ -88,12 +83,15 @@ on its behavior
 */
 Config :: struct {
 	// amount of threads to run tasks
-	worker_count:          u8,
+	worker_count:          int,
 	// amount of threads to run blocking tasks
-	blocking_worker_count: u8,
+	blocking_worker_count: int,
 	// use the main thread as a worker 
 	// prevents immediate exit of a program
 	use_main_thread:       bool,
+	// should oasync print debug info
+	// only works with -debug compiler flag enabled
+	debug_trace_print:     bool,
 }
 
 /*

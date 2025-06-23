@@ -2,6 +2,10 @@
 
 ![badge](https://img.shields.io/badge/documentation%20taken%20seriously-ff7eb6)
 
+Welcome to the `new-blocking-behavior` branch. This branch contains a complete 
+recode/addition of certain features, and *will* produce runtime crashes. 
+However, the scheduler is recently fixed!
+
 M:N multithreading for Odin. The end goal is to implement virtual threads that 
 automatically and quickly parallelize tasks across several os threads.
 
@@ -108,6 +112,7 @@ core :: proc(_: rawptr) -> oa.Behavior {
 
 nextproc :: proc(_: rawptr) -> oa.Behavior {
 	fmt.println("nextproc")
+	return oa.B_None{}
 }
 ```
 
@@ -157,14 +162,8 @@ at the same time, ensuring there is always rooms for non blocking
 tasks to run.
 
 #### passing in arugments
-We replaced the default context.scheduler with an arena allocator.
-The arena allocator `vmem.arena_free_all(itself)` upon finishing 
-every task. This frees everything allocated on the heap. As for 
-the stack, Odin natrually frees everything upon task finishing.
-You already know we pass in arguments via a `rawptr`, so natrually 
-we use the `context.temp_allocator` to allocate arguments we 
-wish to pass into another task.
-
+It is trival to pass arguments into tasks. As Odin is a simple 
+language, this could only be done via a `rawptr`.
 ```odin
 foo :: proc(a: rawptr) -> oa.Behavior {
 	arg := cast(^string)a
@@ -202,6 +201,16 @@ main :: proc() {
 instead, it comes with performance panelity. Avoid this as much 
 as possible.
 
+#### shutdown
+Shutting down oasync can be done by executing the following 
+in a virtual task.
+```odin
+oa.oa_shutdown()
+```
+Should `use_main_thread` be true, this will wait for the main 
+thread to terminate instead of calling `thread.terminate`, 
+causing additional wait time for the procedure to yield.
+
 #### context system
 To spawn tasks, oasync injects info into `context.user_ptr`. 
 This means that you should NEVER change it. Should you still 
@@ -213,6 +222,22 @@ core :: proc(_: rawptr) -> oa.Behavior {
 	// ONLY access the user_ptr field 
 	// do NOT access other fields in Ref_Carrier
 	ptr.user_ptr := ...
+	return oa.B_None{}
+}
+```
+
+However, please note that the context in a task will not be 
+carried over to another task spawned. See below for a 
+demonstration.
+```odin
+core :: proc(_: rawptr) -> oa.Behavior {
+	context.user_index = 1
+	oa.go(stuff)
+	return oa.B_None{}
+}
+
+stuff :: proc(_: rawptr) -> oa.Behavior {
+	fmt.println(context.user_index) // 0
 	return oa.B_None{}
 }
 ```

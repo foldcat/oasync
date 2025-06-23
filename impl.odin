@@ -15,166 +15,215 @@ get_worker :: proc() -> ^Worker {
 	return carrier.worker
 }
 
-steal :: proc(this: ^Worker) {
-	// steal from a random worker
-	worker: Worker
+// fast random number generator via linear congruential 
+// algorithm
+// seed is pulled from worker, thus only works 
+// inside workers
+// by default the seed is generated via a rand.int31()
+// and then acted on by the lcg
+lcg :: proc(worker: ^Worker, max: int) -> i32 {
+	m :: 25253
+	a :: 148251
+	c :: 10007
 
-	switch this.type {
-	case .Generic:
-		// generic workers should not be allowed to steal blocking task
-		worker = rand.choice(this.coordinator.workers[:])
-	case .Blocking:
-		if rand.float32() > 0.5 {
-			worker = rand.choice(this.coordinator.workers[:])
-		} else {
-			worker = rand.choice(this.coordinator.blocking_workers[:])
-		}
-	}
+	worker.rng_seed = (a * worker.rng_seed + c) % m
 
-	if worker.id == this.id {
-		// same id, and don't steal from self,
-		return
-	}
-
-	// we don't steal from queues that doesn't have items
-	queue_length := queue_length(&worker.localq)
-	if queue_length == 0 {
-		return
-	}
-
-	// steal half of the text once we find one
-	for i in 1 ..= u64(queue_length / 2) { 	// TODO: need further testing
-		elem, ok := queue_nonlocal_pop(&worker.localq)
-		if !ok {
-			log.error("failed to steal")
-			return
-		}
-
-		queue_push(&this.localq, elem)
-	}
-
+	return abs(worker.rng_seed) % i32(max)
 }
 
-run_task :: proc(t: Task) {
-	beh := t.effect(t.supply)
+steal :: proc(this: ^Worker) -> (tsk: Task, ok: bool) {
+	num := len(this.coordinator.workers)
+
+	// choose the worker to start searching at
+	start := int(lcg(this, num))
+
+	// limit the times so this doesn't hog forever
+	for i in 0 ..< num {
+		i := (start + i) % num
+		worker := this.coordinator.workers[i]
+		if worker.id == this.id {
+			// same id, and don't steal from self,
+			continue
+		}
+
+		task_count := queue_len(&worker.localq)
+		for i in 1 ..= task_count / 2 {
+			task, ok := queue_steal(&worker.localq)
+			if !ok {
+				break
+			}
+			queue_push_or_overflow(&this.localq, task, &this.coordinator.globalq)
+
+		}
+
+	}
+	return
+}
+
+compute_blocking_count :: proc(workers: []Worker) -> int {
+	// trace("worker count", len(workers))
+	count := 0
+	for worker in workers {
+		// trace(worker.is_blocking)
+		if worker.is_blocking {
+			count += 1
+		}
+	}
+	return count
+}
+
+run_task :: proc(t: ^Task, worker: ^Worker) {
+	// if it is running a task, it isn't stealing
+	worker.is_stealing = false
+
+	if t.is_done {
+		trace("WARNING: ATTEMPTING TO RE-EXECUTE TASKS THAT ARE DONE")
+		return
+	}
+
+	current_count := compute_blocking_count(worker.coordinator.workers)
+	// trace(get_worker_id(), "current_count is", current_count)
+	if t.is_blocking {
+		if current_count >= worker.coordinator.max_blocking_count {
+			spawn_task(t)
+			return
+		}
+		worker.is_blocking = true
+	}
+
+	when ODIN_DEBUG {
+		start_time := time.tick_now()
+	}
+
+	beh: Behavior
+	if _, ok := sync.atomic_compare_exchange_strong_explicit(
+		&t.is_done,
+		false,
+		true,
+		.Seq_Cst,
+		.Relaxed,
+	); ok {
+		beh = t.effect(t.arg)
+	} else {
+		trace("WARNING, ATTEMPTED REEXECUTING")
+		return
+	}
+
+	when ODIN_DEBUG {
+		end_time := time.tick_now()
+		diff := time.tick_diff(start_time, end_time)
+		exec_duration := time.duration_milliseconds(diff)
+		if exec_duration > 40 && !t.is_blocking {
+			log.warn(
+				"oasync debug runtime detected a task executing with duration longer than 40ms,",
+				"your CPU is likely starving,",
+				"this is a sign that you are unintentionally running blocking I/O operations",
+				"without using blocking dispatch",
+			)
+		}
+
+	}
+
+	if t.is_blocking {
+		worker.is_blocking = false
+	}
+
 	switch behavior in beh {
 	case B_None:
 	// do nothing
 	case B_Cb:
+		// call back
 		go(behavior.effect, behavior.supply)
 	case B_Cbb:
+		// blocking callback
 		gob(behavior.effect, behavior.supply)
 	}
+
+	free(t)
+}
+
+calc_steal_couunt :: proc(current_worker: ^Worker) -> (count: int) {
+	for worker in current_worker.coordinator.workers {
+		if worker.is_stealing {
+			count += 1
+		}
+	}
+	return
 }
 
 // event loop that every worker runs
 worker_runloop :: proc(t: ^thread.Thread) {
 	worker := get_worker()
 
-	log.debug("awaiting barrier started")
+	trace("awaiting barrier started")
 	sync.barrier_wait(worker.barrier_ref)
 
-	log.debug("runloop started")
+	trace("runloop started for worker id", worker.id)
 	for {
-		// wipe the arena every loop
-		arena := worker.arena
-		defer vmem.arena_free_all(&arena)
-
-		// tasks in local queue gets scheduled first
-		//log.debug("pop")
-		tsk, exist := queue_pop(&worker.localq)
-		if exist {
-			log.debug("pulled from local queue, running")
-			run_task(tsk)
-
-			continue
+		if !worker.coordinator.is_running {
+			// termination
+			return
 		}
 
-		// here are for a blocking worker 
-		if worker.type == .Blocking {
-			tsk, exist = gqueue_pop(&worker.coordinator.global_blockingq)
-			if exist {
-				log.debug("got item from global blocking channel")
-				run_task(tsk)
-
-				continue
-			}
+		// tasks in local queue gets scheduled first
+		tsk, exist := queue_pop(&worker.localq)
+		if exist {
+			trace(get_worker_id(), "pulled task", tsk.id, "from local queue, running")
+			run_task(tsk, worker)
+			continue
 		}
 
 		// local queue seems to be empty at this point, take a look 
 		// at the global channel
-		//log.debug("chan recv")
+		//trace("chan recv")
 		tsk, exist = gqueue_pop(&worker.coordinator.globalq)
 		if exist {
-			log.debug("got item from global channel")
-			run_task(tsk)
+			trace(get_worker_id(), "pulled task", tsk.id, "from global queue, running")
+			run_task(tsk, worker)
 
 			continue
 		}
 
+		scount := calc_steal_couunt(worker)
 		// global queue seems to be empty too, enter stealing mode 
-		// increment the stealing count
-		// this part needs A LOT OF work
-		//log.debug("steal")
-		scount := sync.atomic_load(&worker.coordinator.search_count)
-		if scount < (worker.coordinator.worker_count / 2) { 	// throttle stealing to half the total thread count
-			sync.atomic_add(&worker.coordinator.search_count, 1) // register the stealing
-			steal(worker) // start stealing
-			sync.atomic_sub(&worker.coordinator.search_count, 1) // register the stealing
+
+		// throttle stealing to half the total thread count
+		if scount < (worker.coordinator.worker_count / 2) {
+			worker.is_stealing = true
+		}
+
+		// only steal when allowed
+		if worker.is_stealing {
+			tsk, succ := steal(worker) // start stealing
+			if succ {
+				run_task(&tsk, worker)
+			}
 		}
 
 	}
+	trace("runloop stopped for worker id", worker.id)
 }
 
 
 // takes a worker context from the context
-spawn_task :: proc(task: Task) {
+spawn_task :: proc(task: ^Task) {
 	worker := get_worker()
 
-	if !queue_push(&worker.localq, task) {
-		// handle pushing to global queue
-		// push half of it
-		for i in 1 ..= queue_length(&worker.localq) / 2 {
-			item, ok := queue_pop(&worker.localq)
-			gqueue_push(&worker.coordinator.globalq, item)
-		}
-		gqueue_push(&worker.coordinator.globalq, task)
-	}
+	queue_push_or_overflow(&worker.localq, task, &worker.coordinator.globalq)
 }
 
-// blocking tasks are pushed onto a queue
-spawn_blocking_task :: proc(task: Task) {
-	worker := get_worker()
 
-	switch worker.type {
-	case .Generic:
-		gqueue_push(&worker.coordinator.global_blockingq, task)
-	case .Blocking:
-		if !queue_push(&worker.localq, task) {
-			// handle pushing to global queue
-			// push half of it
-			for i in 1 ..= queue_length(&worker.localq) / 2 {
-				item, ok := queue_pop(&worker.localq)
-				gqueue_push(&worker.coordinator.global_blockingq, item)
-			}
-			gqueue_push(&worker.coordinator.global_blockingq, task)
-		}
-	}
-}
-
-spawn_unsafe_task :: proc(task: Task, coord: ^Coordinator) {
+spawn_unsafe_task :: proc(task: ^Task, coord: ^Coordinator) {
+	tsk := new_clone(task)
 	gqueue_push(&coord.globalq, task)
 }
 
-spawn_unsafe_blocking_task :: proc(task: Task, coord: ^Coordinator) {
-	gqueue_push(&coord.global_blockingq, task)
-}
-
 setup_thread :: proc(worker: ^Worker) -> ^thread.Thread {
-	log.debug("setting up thread for", worker.id)
+	trace("setting up thread for", worker.id)
 
-	log.debug("init queue")
-	worker.localq = make_queue(Task, LOCAL_QUEUE_SIZE)
+	trace("init queue")
+	worker.localq = Local_Queue(^Task){}
+	worker.rng_seed = rand.int31()
 
 	// weird name to avoid collision
 	thrd := thread.create(worker_runloop) // make a worker thread
@@ -182,42 +231,69 @@ setup_thread :: proc(worker: ^Worker) -> ^thread.Thread {
 
 	ctx := context
 
-	log.debug("creating arena alloc")
-	arena_alloc := vmem.arena_allocator(&worker.arena)
-
-	ctx.allocator = arena_alloc
-
 	ref_carrier := new_clone(Ref_Carrier{worker = worker, user_ptr = nil})
 	ctx.user_ptr = ref_carrier
 
 	thrd.init_context = ctx
 
-	log.debug("built thread")
+	worker.thread_obj = thrd
+
+	trace("built thread")
 	return thrd
 
 }
 
-make_task :: proc(p: proc(_: rawptr) -> Behavior, data: rawptr) -> Task {
-	return Task{effect = p, supply = data}
+// doesn't need to be thread safe
+// this is for debug only
+id_gen: int
+
+make_task :: proc(p: proc(_: rawptr) -> Behavior, data: rawptr, is_blocking := false) -> ^Task {
+	id_gen += 1
+	tsk := new_clone(Task{effect = p, arg = data, is_blocking = is_blocking, id = id_gen})
+
+	return tsk
 }
 
-_init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
-	log.debug("starting worker system")
+_shutdown :: proc() {
+	worker := get_worker()
+	worker.coordinator.is_running = false
+	for worker in worker.coordinator.workers {
+		if !worker.hogs_main_thread {
+			trace("shutting down", worker.id)
+			thread.terminate(worker.thread_obj, 0)
+		}
+	}
+	trace("deleting workers")
+	delete(worker.coordinator.workers)
+	trace("deleting global queue")
+	gqueue_delete(&worker.coordinator.globalq)
+}
+
+_init :: proc(coord: ^Coordinator, cfg: Config, init_task: ^Task) {
+	trace("starting worker system")
 	coord.worker_count = cfg.worker_count
-	coord.blocking_worker_count = cfg.blocking_worker_count
+	coord.max_blocking_count = cfg.blocking_worker_count
+	coord.is_running = true
+	debug_trace_print = cfg.debug_trace_print
+
+	workers := make([]Worker, int(cfg.worker_count))
+	coord.workers = workers
 
 	id_gen: u8
 
-	// set up the global chan
-	log.debug("setting up global channel")
-
 	barrier := sync.Barrier{}
-	sync.barrier_init(&barrier, int(cfg.worker_count + cfg.blocking_worker_count))
+	log.info("starting worker system with", cfg.worker_count, "workers")
+	sync.barrier_init(&barrier, int(cfg.worker_count))
 
-	coord.globalq = make_gqueue(Task)
+	coord.globalq = make_gqueue(^Task)
 
-	for i in 1 ..= coord.worker_count {
-		worker := Worker{}
+	required_worker_count := coord.worker_count
+	if cfg.use_main_thread {
+		required_worker_count -= 1
+	}
+
+	for i in 0 ..< required_worker_count {
+		worker := &coord.workers[i]
 
 		worker.id = id_gen
 		id_gen += 1
@@ -225,58 +301,32 @@ _init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
 		// load in the barrier
 		worker.barrier_ref = &barrier
 		worker.coordinator = coord
-		worker.type = Worker_Type.Generic
-		append(&coord.workers, worker)
 
-		thrd := setup_thread(&worker)
+		thrd := setup_thread(worker)
 		thread.start(thrd)
-		log.debug("started", i, "th worker")
 	}
 
-	for i in 1 ..= coord.blocking_worker_count {
-		worker := Worker{}
-
-		worker.id = id_gen
-		id_gen += 1
-
-		// load in the barrier
-		worker.barrier_ref = &barrier
-		worker.coordinator = coord
-		worker.type = Worker_Type.Blocking
-		append(&coord.workers, worker)
-
-		thrd := setup_thread(&worker)
-		thread.start(thrd)
-		log.debug("started", i, "th blocking worker")
-	}
-
-	// chan send freezes indefinitely when nothing is listening to it
-	// thus it is placed here
-	log.debug("sending first task")
-
+	trace("sending first task")
 	gqueue_push(&coord.globalq, init_task)
 
 	// theats the main thread as a worker too
 	if cfg.use_main_thread == true {
-		main_worker := Worker{}
+		main_worker := &coord.workers[required_worker_count]
 		main_worker.barrier_ref = &barrier
 		main_worker.coordinator = coord
+		main_worker.hogs_main_thread = true
+		main_worker.rng_seed = rand.int31()
 
-		main_worker.localq = make_queue(Task, LOCAL_QUEUE_SIZE)
+		main_worker.localq = Local_Queue(^Task){}
 
-		arena_alloc := vmem.arena_allocator(&main_worker.arena)
-
+		trace("the id of the main worker is", id_gen)
 		main_worker.id = id_gen
-		id_gen += 1
 
-		context.allocator = arena_alloc
-
-		ref_carrier := new_clone(Ref_Carrier{worker = &main_worker, user_ptr = nil})
+		ref_carrier := new_clone(Ref_Carrier{worker = main_worker, user_ptr = nil})
 		context.user_ptr = ref_carrier
 
 		shim_ptr: ^thread.Thread // not gonna use it
 
-		append(&coord.workers, main_worker)
 		coord.worker_count += 1
 
 		worker_runloop(shim_ptr)

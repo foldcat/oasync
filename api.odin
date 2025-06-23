@@ -15,7 +15,7 @@ when blocking_worker_count is zero, this procedure is noop
 and may cause memory leaks
 */
 gob :: proc(p: proc(_: rawptr) -> Behavior, data: rawptr = nil) {
-	spawn_blocking_task(make_task(p, data))
+	spawn_task(make_task(p, data, is_blocking = true))
 }
 
 /* 
@@ -33,7 +33,23 @@ managed by a coordinator, comes with performance penalities
 and does not cause instabilities
 */
 unsafe_gob :: proc(coord: ^Coordinator, p: proc(_: rawptr) -> Behavior, data: rawptr = nil) {
-	spawn_unsafe_blocking_task(make_task(p, data), coord)
+	spawn_unsafe_task(make_task(p, data, is_blocking = true), coord)
+}
+
+/*
+obtains the worker id when executed inside a task
+might segfault otherwise
+*/
+get_worker_id :: proc() -> u8 {
+	worker := get_worker()
+	return worker.id
+}
+
+/*
+shuts down the coordinator
+*/
+oa_shutdown :: proc() {
+	_shutdown()
 }
 
 /*
@@ -59,26 +75,29 @@ yielding immediately to grant control back to the thread executing
 this procedure
 
 init_fn: the first function to execute when oasync is initialized
+
+debug_trace_print: whether to print debug info or not, works 
+only when -debug flag is passed into the compiler
 */
 init_oa :: proc(
 	coord: ^Coordinator,
 	max_workers := 0,
 	max_blocking := 1,
 	use_main_thread := true,
+	debug_trace_print := false,
 	init_fn: proc(_: rawptr) -> Behavior,
 	init_fn_arg: rawptr = nil,
 ) {
-	mworkers: u8 = cast(u8)max_workers
-	mblocking: u8 = cast(u8)max_blocking
-
+	max_workers := max_workers // make it mutable
 	if max_workers == 0 {
-		mworkers = cast(u8)os.processor_core_count()
+		max_workers = os.processor_core_count()
 	}
 
 	cfg := Config {
-		worker_count          = mworkers,
-		blocking_worker_count = mblocking,
+		worker_count          = max_workers,
+		blocking_worker_count = max_blocking,
 		use_main_thread       = use_main_thread,
+		debug_trace_print     = debug_trace_print,
 	}
 
 	init_task := make_task(init_fn, init_fn_arg)
