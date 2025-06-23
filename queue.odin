@@ -18,6 +18,11 @@ Local_Queue :: struct($T: typeid) {
 }
 
 queue_pop :: proc(q: ^Local_Queue($T)) -> (x: T, ok: bool) {
+	// defer if ok {
+	// 	wid := get_worker_id()
+	// 	trace("worker_id", wid, "top", q.top, "bottom", q.bottom)
+	// }
+
 	b := sync.atomic_load_explicit(&q.bottom, .Relaxed) - 1
 	sync.atomic_store_explicit(&q.bottom, b, .Relaxed)
 	sync.atomic_thread_fence(.Seq_Cst)
@@ -41,7 +46,9 @@ queue_pop :: proc(q: ^Local_Queue($T)) -> (x: T, ok: bool) {
 		is_empty = true
 		sync.atomic_store_explicit(&q.bottom, b + 1, .Relaxed)
 	}
-	return x, !is_empty
+	ok = !is_empty
+
+	return
 }
 
 
@@ -102,7 +109,7 @@ queue_steal :: proc(q: ^Local_Queue($T)) -> (x: T, okay: bool) {
 
 queue_len :: proc(q: ^Local_Queue($T)) -> int {
 	b := sync.atomic_load_explicit(&q.bottom, .Relaxed)
-	t := sync.atomic_load_explicit(&q.top, .Acquire)
+	t := sync.atomic_load_explicit(&q.top, .Relaxed)
 	return b - t
 }
 
