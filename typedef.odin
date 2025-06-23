@@ -9,7 +9,7 @@ import "core:thread"
 Worker :: struct {
 	barrier_ref:      ^sync.Barrier,
 	thread_obj:       ^thread.Thread,
-	localq:           Local_Queue(Task, LOCAL_QUEUE_SIZE),
+	localq:           Local_Queue(^Task),
 	run_next:         Task,
 	id:               u8,
 	coordinator:      ^Coordinator,
@@ -72,7 +72,7 @@ Coordinator :: struct {
 	workers:            []Worker,
 	is_running:         bool,
 	worker_count:       int,
-	globalq:            Global_Queue(Task),
+	globalq:            Global_Queue(^Task),
 	max_blocking_count: int,
 }
 

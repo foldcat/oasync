@@ -45,11 +45,17 @@ steal :: proc(this: ^Worker) -> (tsk: Task, ok: bool) {
 			// same id, and don't steal from self,
 			continue
 		}
-		task, ok := queue_steal_into(&worker.localq, &this.localq)
-		if ok {
-			trace("worker id", this.id, "stolen task id", task.id, "from worker id", worker.id)
-			return task, true
+
+		task_count := queue_len(&worker.localq)
+		for i in 1 ..= task_count / 2 {
+			task, ok := queue_steal(&worker.localq)
+			if !ok {
+				break
+			}
+			queue_push_or_overflow(&this.localq, task, &this.coordinator.globalq)
+
 		}
+
 	}
 	return
 }
@@ -79,7 +85,7 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 	// trace(get_worker_id(), "current_count is", current_count)
 	if t.is_blocking {
 		if current_count >= worker.coordinator.max_blocking_count {
-			spawn_task(t^)
+			spawn_task(t)
 			return
 		}
 		worker.is_blocking = true
@@ -88,8 +94,20 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 	when ODIN_DEBUG {
 		start_time := time.tick_now()
 	}
-	beh := t.effect(t.arg)
-	t.is_done = true
+
+	beh: Behavior
+	if _, ok := sync.atomic_compare_exchange_strong_explicit(
+		&t.is_done,
+		false,
+		true,
+		.Seq_Cst,
+		.Relaxed,
+	); ok {
+		beh = t.effect(t.arg)
+	} else {
+		trace("WARNING, ATTEMPTED REEXECUTING")
+		return
+	}
 
 	when ODIN_DEBUG {
 		end_time := time.tick_now()
@@ -120,6 +138,8 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 		// blocking callback
 		gob(behavior.effect, behavior.supply)
 	}
+
+	free(t)
 }
 
 calc_steal_couunt :: proc(current_worker: ^Worker) -> (count: int) {
@@ -149,7 +169,7 @@ worker_runloop :: proc(t: ^thread.Thread) {
 		tsk, exist := queue_pop(&worker.localq)
 		if exist {
 			trace(get_worker_id(), "pulled task", tsk.id, "from local queue, running")
-			run_task(&tsk, worker)
+			run_task(tsk, worker)
 			continue
 		}
 
@@ -159,7 +179,7 @@ worker_runloop :: proc(t: ^thread.Thread) {
 		tsk, exist = gqueue_pop(&worker.coordinator.globalq)
 		if exist {
 			trace(get_worker_id(), "pulled task", tsk.id, "from global queue, running")
-			run_task(&tsk, worker)
+			run_task(tsk, worker)
 
 			continue
 		}
@@ -186,15 +206,15 @@ worker_runloop :: proc(t: ^thread.Thread) {
 
 
 // takes a worker context from the context
-spawn_task :: proc(task: Task) {
+spawn_task :: proc(task: ^Task) {
 	worker := get_worker()
 
-	trace("spawning task", task.id)
-	queue_push_back_or_overflow(&worker.localq, task, &worker.coordinator.globalq)
+	queue_push_or_overflow(&worker.localq, task, &worker.coordinator.globalq)
 }
 
 
-spawn_unsafe_task :: proc(task: Task, coord: ^Coordinator) {
+spawn_unsafe_task :: proc(task: ^Task, coord: ^Coordinator) {
+	tsk := new_clone(task)
 	gqueue_push(&coord.globalq, task)
 }
 
@@ -202,7 +222,7 @@ setup_thread :: proc(worker: ^Worker) -> ^thread.Thread {
 	trace("setting up thread for", worker.id)
 
 	trace("init queue")
-	worker.localq = make_queue(Task, LOCAL_QUEUE_SIZE)
+	worker.localq = Local_Queue(^Task){}
 	worker.rng_seed = rand.int31()
 
 	// weird name to avoid collision
@@ -227,9 +247,11 @@ setup_thread :: proc(worker: ^Worker) -> ^thread.Thread {
 // this is for debug only
 id_gen: int
 
-make_task :: proc(p: proc(_: rawptr) -> Behavior, data: rawptr, is_blocking := false) -> Task {
+make_task :: proc(p: proc(_: rawptr) -> Behavior, data: rawptr, is_blocking := false) -> ^Task {
 	id_gen += 1
-	return Task{effect = p, arg = data, is_blocking = is_blocking, id = id_gen}
+	tsk := new_clone(Task{effect = p, arg = data, is_blocking = is_blocking, id = id_gen})
+
+	return tsk
 }
 
 _shutdown :: proc() {
@@ -247,7 +269,7 @@ _shutdown :: proc() {
 	gqueue_delete(&worker.coordinator.globalq)
 }
 
-_init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
+_init :: proc(coord: ^Coordinator, cfg: Config, init_task: ^Task) {
 	trace("starting worker system")
 	coord.worker_count = cfg.worker_count
 	coord.max_blocking_count = cfg.blocking_worker_count
@@ -259,14 +281,11 @@ _init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
 
 	id_gen: u8
 
-	// set up the global chan
-	trace("setting up global channel")
-
 	barrier := sync.Barrier{}
 	log.info("starting worker system with", cfg.worker_count, "workers")
 	sync.barrier_init(&barrier, int(cfg.worker_count))
 
-	coord.globalq = make_gqueue(Task)
+	coord.globalq = make_gqueue(^Task)
 
 	required_worker_count := coord.worker_count
 	if cfg.use_main_thread {
@@ -298,7 +317,7 @@ _init :: proc(coord: ^Coordinator, cfg: Config, init_task: Task) {
 		main_worker.hogs_main_thread = true
 		main_worker.rng_seed = rand.int31()
 
-		main_worker.localq = make_queue(Task, LOCAL_QUEUE_SIZE)
+		main_worker.localq = Local_Queue(^Task){}
 
 		trace("the id of the main worker is", id_gen)
 		main_worker.id = id_gen
