@@ -4,7 +4,11 @@ package oasync
 import "core:log"
 import "core:sync"
 
-ARRAY_SIZE :: 8
+when ODIN_DEBUG {
+	ARRAY_SIZE :: 8
+} else {
+	ARRAY_SIZE :: 256
+}
 
 // https://fzn.fr/readings/ppopp13.pdf
 
