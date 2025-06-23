@@ -76,11 +76,6 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 	// if it is running a task, it isn't stealing
 	worker.is_stealing = false
 
-	if t.is_done {
-		trace("WARNING: ATTEMPTING TO RE-EXECUTE TASKS THAT ARE DONE")
-		return
-	}
-
 	current_count := compute_blocking_count(worker.coordinator.workers)
 	// trace(get_worker_id(), "current_count is", current_count)
 	if t.is_blocking {
@@ -100,12 +95,12 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 		&t.is_done,
 		false,
 		true,
-		.Seq_Cst,
+		.Consume,
 		.Relaxed,
 	); ok {
 		beh = t.effect(t.arg)
 	} else {
-		trace("WARNING, ATTEMPTED REEXECUTING")
+		trace("WARNING: ATTEMPTING TO RE-EXECUTE TASKS THAT ARE DONE")
 		return
 	}
 
