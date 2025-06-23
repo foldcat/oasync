@@ -2,10 +2,6 @@
 
 ![badge](https://img.shields.io/badge/documentation%20taken%20seriously-ff7eb6)
 
-Welcome to the `new-blocking-behavior` branch. This branch contains a complete 
-recode/addition of certain features, and *will* produce runtime crashes. 
-However, the scheduler is recently fixed!
-
 M:N multithreading for Odin. The end goal is to implement virtual threads that 
 automatically and quickly parallelize tasks across several os threads.
 
