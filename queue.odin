@@ -60,7 +60,7 @@ queue_push_or_overflow :: proc(q: ^Local_Queue($T), x: T, gq: ^Global_Queue(T)) 
 	} else {
 		sync.mutex_lock(&gq.mutex)
 		defer sync.mutex_unlock(&gq.mutex)
-		for i in 1 ..= queue_len(q) {
+		for i in 1 ..= queue_len(q) / 2 {
 			item, ok := queue_pop(q)
 			if !ok {
 				break
