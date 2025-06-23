@@ -148,7 +148,7 @@ worker_runloop :: proc(t: ^thread.Thread) {
 		// tasks in local queue gets scheduled first
 		tsk, exist := queue_pop(&worker.localq)
 		if exist {
-			// trace("pulled from local queue, running")
+			trace(get_worker_id(), "pulled task", tsk.id, "from local queue, running")
 			run_task(&tsk, worker)
 			continue
 		}
@@ -158,7 +158,7 @@ worker_runloop :: proc(t: ^thread.Thread) {
 		//trace("chan recv")
 		tsk, exist = gqueue_pop(&worker.coordinator.globalq)
 		if exist {
-			trace("got item from global channel")
+			trace(get_worker_id(), "pulled task", tsk.id, "from global queue, running")
 			run_task(&tsk, worker)
 
 			continue
@@ -189,6 +189,7 @@ worker_runloop :: proc(t: ^thread.Thread) {
 spawn_task :: proc(task: Task) {
 	worker := get_worker()
 
+	trace("spawning task", task.id)
 	queue_push_back_or_overflow(&worker.localq, task, &worker.coordinator.globalq)
 }
 
