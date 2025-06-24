@@ -8,8 +8,8 @@ automatically and quickly parallelize tasks across several os threads.
 Now back in active development!
 
 ## usage
-Note that this library is in a **PRE ALPHA STATE**. It lacks essential features 
-and may randomly cause segmented faults.
+Note that this library is in a **PRE ALPHA STATE**. It lacks essential features,
+may segmented fault, and has **major** bugs that has yet to be fixed.
 
 However, please test it out and provide feedbacks and bug reports!
 
