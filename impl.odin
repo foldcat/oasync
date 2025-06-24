@@ -55,6 +55,7 @@ steal :: proc(this: ^Worker) -> (tsk: Task, ok: bool) {
 			queue_push_or_overflow(&this.localq, task, &this.coordinator.globalq)
 
 		}
+		trace(get_worker_id(), "stole some", task_count)
 
 	}
 	return
@@ -63,9 +64,9 @@ steal :: proc(this: ^Worker) -> (tsk: Task, ok: bool) {
 compute_blocking_count :: proc(workers: []Worker) -> int {
 	// trace("worker count", len(workers))
 	count := 0
-	for worker in workers {
+	for &worker in workers {
 		// trace(worker.is_blocking)
-		if worker.is_blocking {
+		if sync.atomic_load(&worker.is_blocking) {
 			count += 1
 		}
 	}
@@ -78,12 +79,15 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 
 	current_count := compute_blocking_count(worker.coordinator.workers)
 	// trace(get_worker_id(), "current_count is", current_count)
-	if t.is_blocking {
+
+	is_blocking := sync.atomic_load(&t.is_blocking)
+	if is_blocking {
 		if current_count >= worker.coordinator.max_blocking_count {
 			spawn_task(t)
 			return
 		}
-		worker.is_blocking = true
+		sync.atomic_store(&worker.is_blocking, true)
+		is_blocking = true
 	}
 
 	when ODIN_DEBUG {
@@ -100,7 +104,7 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 	); ok {
 		beh = t.effect(t.arg)
 	} else {
-		trace("WARNING: ATTEMPTING TO RE-EXECUTE TASKS THAT ARE DONE")
+		// trace("WARNING: ATTEMPTING TO RE-EXECUTE TASKS THAT ARE DONE")
 		return
 	}
 
@@ -108,7 +112,7 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 		end_time := time.tick_now()
 		diff := time.tick_diff(start_time, end_time)
 		exec_duration := time.duration_milliseconds(diff)
-		if exec_duration > 40 && !t.is_blocking {
+		if exec_duration > 40 && !is_blocking {
 			log.warn(
 				"oasync debug runtime detected a task executing with duration longer than 40ms,",
 				"your CPU is likely starving,",
@@ -119,8 +123,8 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 
 	}
 
-	if t.is_blocking {
-		worker.is_blocking = false
+	if is_blocking {
+		sync.atomic_store(&worker.is_blocking, false)
 	}
 
 	switch behavior in beh {
@@ -163,7 +167,7 @@ worker_runloop :: proc(t: ^thread.Thread) {
 		// tasks in local queue gets scheduled first
 		tsk, exist := queue_pop(&worker.localq)
 		if exist {
-			trace(get_worker_id(), "pulled task", tsk.id, "from local queue, running")
+			// trace(get_worker_id(), "pulled task", tsk.id, "from local queue, running")
 			run_task(tsk, worker)
 			continue
 		}
@@ -173,7 +177,7 @@ worker_runloop :: proc(t: ^thread.Thread) {
 		//trace("chan recv")
 		tsk, exist = gqueue_pop(&worker.coordinator.globalq)
 		if exist {
-			trace(get_worker_id(), "pulled task", tsk.id, "from global queue, running")
+			// trace(get_worker_id(), "pulled task", tsk.id, "from global queue, running")
 			run_task(tsk, worker)
 
 			continue
