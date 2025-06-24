@@ -56,7 +56,7 @@ queue_pop :: proc(q: ^Local_Queue($T)) -> (x: T, ok: bool) {
 queue_push :: proc(q: ^Local_Queue($T), x: T) -> bool {
 	b := sync.atomic_load_explicit(&q.bottom, .Relaxed)
 	t := sync.atomic_load_explicit(&q.top, .Acquire)
-	if (b + 1) % ARRAY_SIZE == t {
+	if ARRAY_SIZE < (b - t) + 1 {
 		return false
 	}
 	sync.atomic_store_explicit(&q.array[b % ARRAY_SIZE], x, .Relaxed)
