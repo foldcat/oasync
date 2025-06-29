@@ -4,6 +4,19 @@ import vmem "core:mem/virtual"
 import "core:sync"
 import "core:thread"
 
+/* 
+coordinates workers for dispatching virtual threads and 
+executing tasks
+should not be accessed
+*/
+Coordinator :: struct {
+	workers:            []Worker,
+	is_running:         bool,
+	worker_count:       int,
+	globalq:            Global_Queue(^Task),
+	max_blocking_count: int,
+}
+
 // assigned to each thread
 @(private)
 Worker :: struct {
@@ -43,13 +56,6 @@ B_Cbb :: struct {
 	supply: rawptr,
 }
 
-// types of behavior
-Btype :: enum {
-	// do nothing
-	Noop,
-	// execute another task upon the current task ending
-	Callback,
-}
 
 @(private)
 Task :: struct {
@@ -61,19 +67,6 @@ Task :: struct {
 	is_done:     bool,
 	// for debug
 	id:          int,
-}
-
-/* 
-coordinates workers for dispatching virtual threads and 
-executing tasks
-should not be accessed
-*/
-Coordinator :: struct {
-	workers:            []Worker,
-	is_running:         bool,
-	worker_count:       int,
-	globalq:            Global_Queue(^Task),
-	max_blocking_count: int,
 }
 
 /*
