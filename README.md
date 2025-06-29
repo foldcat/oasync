@@ -166,7 +166,7 @@ main :: proc() {
 	time.sleep(1 * time.Second)
 }
 ```
-By supplying go with a coordinator, it will be capable of 
+By supplying `go` with a coordinator, it will be capable of 
 dispatching tasks outside of threads managed not by oasync.
 
 This imposes a heavy performance penality and should be 
