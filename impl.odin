@@ -1,10 +1,8 @@
 #+private
 package oasync
 
-import "core:fmt"
 import "core:log"
 import "core:math/rand"
-import vmem "core:mem/virtual"
 import "core:sync"
 import "core:thread"
 import "core:time"
@@ -39,16 +37,16 @@ steal :: proc(this: ^Worker) -> (tsk: ^Task, ok: bool) {
 
 	// limit the times so this doesn't hog forever
 	for i in 0 ..< num {
-		i := (start + i) % num
+		ix := (start + i) % num
 		// this must be a pointer
-		worker := &this.coordinator.workers[i]
+		worker := &this.coordinator.workers[ix]
 		if worker.id == this.id {
 			// same id, and don't steal from self,
 			continue
 		}
 
-		task, ok := queue_steal(&worker.localq)
-		if ok {
+		task, steal_ok := queue_steal(&worker.localq)
+		if steal_ok {
 			// trace(get_worker_id(), "stole", task.id, "from", worker.id, "where the queue is", worker.localq)
 			return task, true
 		}
@@ -196,9 +194,9 @@ worker_runloop :: proc(t: ^thread.Thread) {
 
 		// only steal when allowed
 		if worker.is_stealing {
-			tsk, succ := steal(worker) // start stealing
+			stolen_task, succ := steal(worker) // start stealing
 			if succ {
-				run_task(tsk, worker)
+				run_task(stolen_task, worker)
 			}
 		}
 
@@ -248,9 +246,24 @@ setup_thread :: proc(worker: ^Worker) -> ^thread.Thread {
 // this is for debug only
 id_gen: int
 
-make_task :: proc(p: proc(_: rawptr) -> Behavior, data: rawptr, is_blocking := false) -> ^Task {
+make_task :: proc(
+	p: proc(_: rawptr) -> Behavior,
+	data: rawptr,
+	is_blocking := false,
+	is_timed := false,
+	execute_at := time.Tick{},
+) -> ^Task {
 	id_gen += 1
-	tsk := new_clone(Task{effect = p, arg = data, is_blocking = is_blocking, id = id_gen})
+	tsk := new_clone(
+		Task {
+			effect = p,
+			arg = data,
+			is_blocking = is_blocking,
+			id = id_gen,
+			is_timed = is_timed,
+			execute_at = execute_at,
+		},
+	)
 
 	return tsk
 }

@@ -1,7 +1,6 @@
 #+private
 package oasync
 
-import "core:log"
 import "core:sync"
 
 when ODIN_DEBUG {
@@ -31,13 +30,13 @@ queue_pop :: proc(q: ^Local_Queue($T)) -> (x: T, ok: bool) {
 	if t <= b {
 		x = sync.atomic_load_explicit(&q.array[b % ARRAY_SIZE], .Relaxed)
 		if t == b {
-			if _, ok := sync.atomic_compare_exchange_strong_explicit(
+			if _, race_ok := sync.atomic_compare_exchange_strong_explicit(
 				&q.top,
 				t,
 				t + 1,
 				.Seq_Cst,
 				.Relaxed,
-			); !ok {
+			); !race_ok {
 				is_empty = true
 			}
 			sync.atomic_store_explicit(&q.bottom, b + 1, .Relaxed)
@@ -71,7 +70,7 @@ queue_push_or_overflow :: proc(q: ^Local_Queue($T), x: T, gq: ^Global_Queue(T)) 
 	} else {
 		sync.mutex_lock(&gq.mutex)
 		defer sync.mutex_unlock(&gq.mutex)
-		for i in 1 ..= queue_len(q) / 2 {
+		for _ in 1 ..= queue_len(q) / 2 {
 			item, ok := queue_pop(q)
 			if !ok {
 				break
