@@ -71,12 +71,12 @@ only when -debug flag is passed into the compiler
 */
 init_oa :: proc(
 	coord: ^Coordinator,
+	init_fn: proc(_: rawptr) -> Behavior,
+	init_fn_arg: rawptr = nil,
 	max_workers := 0,
 	max_blocking := 1,
 	use_main_thread := true,
 	debug_trace_print := false,
-	init_fn: proc(_: rawptr) -> Behavior,
-	init_fn_arg: rawptr = nil,
 ) {
 	max_workers := max_workers // make it mutable
 	if max_workers == 0 {
