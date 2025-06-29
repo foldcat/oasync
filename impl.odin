@@ -138,7 +138,7 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 		go(behavior.effect, behavior.supply)
 	case B_Cbb:
 		// blocking callback
-		gob(behavior.effect, behavior.supply)
+		go(behavior.effect, behavior.supply, block = true)
 	}
 
 	free(t)

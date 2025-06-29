@@ -3,37 +3,27 @@ package oasync
 import "core:os"
 
 /* 
-spawn tasks in a virtual thread
-*/
-go :: proc(p: proc(_: rawptr) -> Behavior, data: rawptr = nil) {
-	spawn_task(make_task(p, data))
-}
+dispatch a task
 
-/* 
-spawn tasks that will be run in blocking workers
-when blocking_worker_count is zero, this procedure is noop 
-and may cause memory leaks
+data: a rawptr argument to pass into your task
+block: if true, dispatch said task in blocking mode
+coord: if not nil, spawn task in unsafe mode, where 
+tasks may be run outside of threads managed by oasync,
+comes with heavy performance drawback
 */
-gob :: proc(p: proc(_: rawptr) -> Behavior, data: rawptr = nil) {
-	spawn_task(make_task(p, data, is_blocking = true))
-}
+go :: proc(
+	p: proc(_: rawptr) -> Behavior,
+	data: rawptr = nil,
+	block: bool = false,
+	coord: ^Coordinator = nil,
+) {
+	task := make_task(p, data, is_blocking = block)
 
-/* 
-used when attempting to spawn tasks outside of a thread 
-managed by a coordinator, comes with performance penalities
-and does not cause instabilities
-*/
-unsafe_go :: proc(coord: ^Coordinator, p: proc(_: rawptr) -> Behavior, data: rawptr = nil) {
-	spawn_unsafe_task(make_task(p, data), coord)
-}
-
-/* 
-used when attempting to spawn blocking tasks outside of a thread 
-managed by a coordinator, comes with performance penalities
-and does not cause instabilities
-*/
-unsafe_gob :: proc(coord: ^Coordinator, p: proc(_: rawptr) -> Behavior, data: rawptr = nil) {
-	spawn_unsafe_task(make_task(p, data, is_blocking = true), coord)
+	if coord == nil {
+		spawn_task(task)
+	} else {
+		spawn_unsafe_task(task, coord)
+	}
 }
 
 /*

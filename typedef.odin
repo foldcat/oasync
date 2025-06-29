@@ -3,6 +3,7 @@ package oasync
 import vmem "core:mem/virtual"
 import "core:sync"
 import "core:thread"
+import "core:time"
 
 /* 
 coordinates workers for dispatching virtual threads and 
@@ -65,6 +66,12 @@ Task :: struct {
 	arg:         rawptr,
 	is_blocking: bool,
 	is_done:     bool,
+
+	// if a task is scheduled to run later or not
+	// this is NOT garenteed to execute at the exact tick
+	is_timed:    bool,
+	execute_at:  time.Tick,
+
 	// for debug
 	id:          int,
 }
