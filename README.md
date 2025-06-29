@@ -130,6 +130,26 @@ We only allow `max_blocking` amount of blocking task to run
 at the same time, ensuring there is always rooms for non blocking 
 tasks to run.
 
+### timed schedule
+It is possible to delay the execution of a task without hogging 
+threads with `time.sleep()`.
+```odin
+stuff :: proc(a: rawptr) -> oa.Behavior {
+	fmt.println("done!", (cast(^int)a)^)
+	return oa.B_None{}
+}
+
+core :: proc(_: rawptr) -> oa.Behavior {
+	fmt.println("started")
+	for i in 0 ..= 20 {
+		data := new_clone(i, context.temp_allocator)
+		next := time.tick_add(time.tick_now(), 5 * time.Second)
+		oa.go(stuff, data, exe_at = next)
+	}
+	return oa.B_None{}
+}
+```
+
 ### passing in arugments
 It is trival to pass arguments into tasks. As Odin is a simple 
 language, this could only be done via a `rawptr`.
