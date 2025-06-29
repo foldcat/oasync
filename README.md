@@ -132,7 +132,7 @@ tasks to run.
 
 ### timed schedule
 It is possible to delay the execution of a task without hogging 
-threads with `time.sleep()`.
+threads with `time.sleep()`. 
 ```odin
 stuff :: proc(a: rawptr) -> oa.Behavior {
 	fmt.println("done!", (cast(^int)a)^)
@@ -149,6 +149,8 @@ core :: proc(_: rawptr) -> oa.Behavior {
 	return oa.B_None{}
 }
 ```
+Note that timed tasks will execute *during* or *after* the tick you supplied, 
+i.e. tasks are not garenteed to execute at percisely the tick passed into it.
 
 ### passing in arugments
 It is trival to pass arguments into tasks. As Odin is a simple 
