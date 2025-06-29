@@ -216,7 +216,6 @@ spawn_task :: proc(task: ^Task) {
 
 
 spawn_unsafe_task :: proc(task: ^Task, coord: ^Coordinator) {
-	tsk := new_clone(task)
 	gqueue_push(&coord.globalq, task)
 }
 
