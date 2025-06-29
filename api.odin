@@ -1,6 +1,7 @@
 package oasync
 
 import "core:os"
+import "core:time"
 
 /* 
 dispatch a task
@@ -16,8 +17,9 @@ go :: proc(
 	data: rawptr = nil,
 	block: bool = false,
 	coord: ^Coordinator = nil,
+	exe_at := time.Tick{},
 ) {
-	task := make_task(p, data, is_blocking = block)
+	task := make_task(p, data, is_blocking = block, execute_at = exe_at)
 
 	if coord == nil {
 		spawn_task(task)

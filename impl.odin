@@ -66,6 +66,8 @@ compute_blocking_count :: proc(workers: []Worker) -> int {
 	return count
 }
 
+EMPTY_TICK :: time.Tick{}
+
 run_task :: proc(t: ^Task, worker: ^Worker) {
 	// if it is running a task, it isn't stealing
 	worker.is_stealing = false
@@ -81,6 +83,18 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 		}
 		sync.atomic_store(&worker.is_blocking, true)
 		is_blocking = true
+	}
+
+	if t.execute_at != EMPTY_TICK {
+		now := time.tick_now()
+		diff := time.tick_diff(t.execute_at, now)
+		if time.duration_milliseconds(diff) <= 0 {
+			// it is in future
+			// we are not executing tasks that is supposed to be 
+			// ran in future
+			spawn_task(t)
+			return
+		}
 	}
 
 	when ODIN_DEBUG {
@@ -250,7 +264,6 @@ make_task :: proc(
 	p: proc(_: rawptr) -> Behavior,
 	data: rawptr,
 	is_blocking := false,
-	is_timed := false,
 	execute_at := time.Tick{},
 ) -> ^Task {
 	id_gen += 1
@@ -260,7 +273,6 @@ make_task :: proc(
 			arg = data,
 			is_blocking = is_blocking,
 			id = id_gen,
-			is_timed = is_timed,
 			execute_at = execute_at,
 		},
 	)

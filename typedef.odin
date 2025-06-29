@@ -68,7 +68,6 @@ Task :: struct {
 
 	// if a task is scheduled to run later or not
 	// this is NOT garenteed to execute at the exact tick
-	is_timed:    bool,
 	execute_at:  time.Tick,
 
 	// for debug
