@@ -9,9 +9,13 @@ Now back in active development!
 
 ## usage
 Note that this library is in a **PRE ALPHA STATE**. It lacks essential features,
-may segmented fault, and has **major** bugs.
+may cause segmented fault, contains breaking changes, and probably has house major bugs.
 
 However, please test it out and provide feedbacks and bug reports!
+
+Note that oasync is NOT compatable with `core:sync` and any blocking codebase, including 
+and not limited to channels. Native implementation/alternative of said constructs are 
+planned.
 
 In the examples below, we will be importing oasync as so: 
 ```odin 
