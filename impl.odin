@@ -31,7 +31,7 @@ lcg :: proc(worker: ^Worker, max: int) -> i32 {
 	return abs(worker.rng_seed) % i32(max)
 }
 
-steal :: proc(this: ^Worker) -> (tsk: Task, ok: bool) {
+steal :: proc(this: ^Worker) -> (tsk: ^Task, ok: bool) {
 	num := len(this.coordinator.workers)
 
 	// choose the worker to start searching at
@@ -40,23 +40,18 @@ steal :: proc(this: ^Worker) -> (tsk: Task, ok: bool) {
 	// limit the times so this doesn't hog forever
 	for i in 0 ..< num {
 		i := (start + i) % num
-		worker := this.coordinator.workers[i]
+		// this must be a pointer
+		worker := &this.coordinator.workers[i]
 		if worker.id == this.id {
 			// same id, and don't steal from self,
 			continue
 		}
 
-		task_count := queue_len(&worker.localq)
-		for i in 1 ..= task_count / 2 {
-			task, ok := queue_steal(&worker.localq)
-			if !ok {
-				break
-			}
-			queue_push_or_overflow(&this.localq, task, &this.coordinator.globalq)
-
+		task, ok := queue_steal(&worker.localq)
+		if ok {
+			// trace(get_worker_id(), "stole", task.id, "from", worker.id, "where the queue is", worker.localq)
+			return task, true
 		}
-		trace(get_worker_id(), "stole some", task_count)
-
 	}
 	return
 }
@@ -103,6 +98,14 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 		.Relaxed,
 	); ok {
 		beh = t.effect(t.arg)
+		trace(
+			get_worker_id(),
+			"executed task",
+			t.id,
+			"now queue has",
+			queue_len(&worker.localq),
+			"items",
+		)
 	} else {
 		// trace("WARNING: ATTEMPTING TO RE-EXECUTE TASKS THAT ARE DONE")
 		return
@@ -195,7 +198,7 @@ worker_runloop :: proc(t: ^thread.Thread) {
 		if worker.is_stealing {
 			tsk, succ := steal(worker) // start stealing
 			if succ {
-				run_task(&tsk, worker)
+				run_task(tsk, worker)
 			}
 		}
 

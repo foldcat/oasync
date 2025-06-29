@@ -56,7 +56,7 @@ queue_pop :: proc(q: ^Local_Queue($T)) -> (x: T, ok: bool) {
 queue_push :: proc(q: ^Local_Queue($T), x: T) -> bool {
 	b := sync.atomic_load_explicit(&q.bottom, .Relaxed)
 	t := sync.atomic_load_explicit(&q.top, .Acquire)
-	if ARRAY_SIZE < (b - t) + 1 {
+	if b - t > ARRAY_SIZE - 1 {
 		return false
 	}
 	sync.atomic_store_explicit(&q.array[b % ARRAY_SIZE], x, .Relaxed)
@@ -99,6 +99,7 @@ queue_steal :: proc(q: ^Local_Queue($T)) -> (x: T, okay: bool) {
 			.Relaxed,
 		); !ok {
 			// failed race
+			trace("failed race")
 			return x, false
 		}
 		return x, true
@@ -169,6 +170,7 @@ gqueue_pop_mutexless :: proc(q: ^Global_Queue($T)) -> (res: T, ok: bool) {
 
 	free(temp)
 	q.size -= 1
+	trace(get_worker_id(), "obtained", data.id)
 	return data, true
 }
 
