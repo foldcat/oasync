@@ -8,6 +8,8 @@ dispatch a task
 
 data: a rawptr argument to pass into your task
 block: if true, dispatch said task in blocking mode
+exe_at: when supplied, task will execute during or after 
+the supplied tick
 coord: if not nil, spawn task in unsafe mode, where 
 tasks may be run outside of threads managed by oasync,
 comes with heavy performance drawback
