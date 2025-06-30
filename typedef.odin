@@ -30,15 +30,17 @@ Worker :: struct {
 	is_stealing:      bool,
 	hogs_main_thread: bool,
 	rng_seed:         i32,
-	task_id_gen:      int,
+	task_id_gen:      u32,
 }
 
 @(private)
-Task_Id :: struct {
+// 16 bits wasted but we could work with this
+// is a bit_field as it can be loaded by sync.atomic_load
+Task_Id :: bit_field i64 {
 	// used for unsafe dispatching or the first task dispatched
-	parentless:    bool,
-	parent_worker: u8,
-	task_id:       int,
+	parentless:    bool | 8,
+	parent_worker: u8   | 8,
+	task_id:       u32  | 32,
 }
 
 @(private)
