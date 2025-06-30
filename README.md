@@ -7,6 +7,13 @@ automatically and quickly parallelize tasks across several os threads.
 
 Now back in active development!
 
+## features
+- dispatch tasks throughout a thread pool with load balancing
+- supports blocking task pool and scheduling tasks to run in the future
+- depends on ONLY the Odin compiler (just like any Odin libraries)
+- 100% api docs coverage + walkthough (see below)
+- small and commented codebase for those who want to know how oasync works internally
+
 ## usage
 Note that this library is in a **PRE ALPHA STATE**. It lacks essential features,
 may cause segmented fault, contains breaking changes, and probably has house major bugs.
