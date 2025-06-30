@@ -101,7 +101,6 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 		start_time := time.tick_now()
 	}
 
-	beh: Behavior
 	if _, ok := sync.atomic_compare_exchange_strong_explicit(
 		&t.is_done,
 		false,
@@ -109,7 +108,7 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 		.Consume,
 		.Relaxed,
 	); ok {
-		beh = t.effect(t.arg)
+		t.effect(t.arg)
 		trace(
 			get_worker_id(),
 			"executed task",
@@ -140,17 +139,6 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 
 	if is_blocking {
 		sync.atomic_store(&worker.is_blocking, false)
-	}
-
-	switch behavior in beh {
-	case B_None:
-	// do nothing
-	case B_Cb:
-		// call back
-		go(behavior.effect, behavior.supply)
-	case B_Cbb:
-		// blocking callback
-		go(behavior.effect, behavior.supply, block = true)
 	}
 
 	free(t)
@@ -261,7 +249,7 @@ setup_thread :: proc(worker: ^Worker) -> ^thread.Thread {
 id_gen: int
 
 make_task :: proc(
-	p: proc(_: rawptr) -> Behavior,
+	p: proc(_: rawptr),
 	data: rawptr,
 	is_blocking := false,
 	execute_at := time.Tick{},

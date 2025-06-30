@@ -32,36 +32,11 @@ Worker :: struct {
 	rng_seed:         i32,
 }
 
-// behavior dictates what to do *after* the task is done, 
-// for example, callbacks
-Behavior :: union {
-	B_None,
-	B_Cb,
-	B_Cbb,
-}
-
-// do nothing
-B_None :: struct {
-}
-
-// callback to a function
-B_Cb :: struct {
-	effect: proc(input: rawptr) -> Behavior,
-	supply: rawptr,
-}
-
-// callback to a function, blocking
-B_Cbb :: struct {
-	effect: proc(input: rawptr) -> Behavior,
-	supply: rawptr,
-}
-
-
 @(private)
 Task :: struct {
 	// void * generic
 	// sometimes i wish for a more complex type system
-	effect:      proc(input: rawptr) -> Behavior,
+	effect:      proc(input: rawptr),
 	arg:         rawptr,
 	is_blocking: bool,
 	is_done:     bool,

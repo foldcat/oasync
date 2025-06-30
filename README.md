@@ -55,58 +55,27 @@ main :: proc() {
 }
 
 // the task to run
-core :: proc(_: rawptr) -> oa.Behavior {
+core :: proc(_: rawptr) {
 	fmt.println("test")
 	return oa.B_None{}
 }
 ```
 
-### behaviors
-
-Lets take a look at the procedure `core` that we need to 
-execute immediately after the oasync runtime initializes.
-
-```odin
-core :: proc(_: rawptr) -> oa.Behavior {
-	fmt.println("goodbye world~")
-	return oa.B_None{}
-}
-```
-This procedure returns an `oa.Behavior`. `oa.Behavior` dictates
-what oasync does *after* the execution of a task. In this 
-case, `oa.B_None` means "do nothing after core finishes execution".
-
-We can use behavior to achieve callbacks:
-```odin
-core :: proc(_: rawptr) -> oa.Behavior {
-	fmt.println("core")
-	return oa.B_Cb{effect = nextproc}
-}
-
-nextproc :: proc(_: rawptr) -> oa.Behavior {
-	fmt.println("nextproc")
-	return oa.B_None{}
-}
-```
-
 ### running new tasks
-
 You might want to spawn tasks in the middle of a task, doing 
 this is simple and easy.
 
 ```odin
-foo :: proc(_: rawptr) -> oa.Behavior {
+foo :: proc(_: rawptr) {
 	fmt.println("hi")
-	return oa.B_None{}
 }
 
-core :: proc(_: rawptr) -> oa.Behavior {
+core :: proc(_: rawptr) {
 	fmt.println("core")
 	// foo is the task we want to spawn 
 	// nil is the argument passed into it, rawptr as always 
 	// you may omit it as default parameter of it is nil
 	oa.go(foo, nil) 
-	return oa.B_None{}
 }
 ```
 
@@ -116,18 +85,16 @@ long time to finish, this should be avoided because it hogs
 up our scheduler and leaving one of our threads out of commission.
 This is why we should spawn blocking tasks in this situation.
 ```odin
-blocking :: proc(_: rawptr) -> oa.Behavior {
+blocking :: proc(_: rawptr) {
 	fmt.println("done")
 	time.sleep(1 * time.Second)
-	return oa.B_None{}
 }
 
-core :: proc(_: rawptr) -> oa.Behavior {
+core :: proc(_: rawptr) {
 	fmt.println("test")
 	for _ in 1 ..= 4 {
 		oa.go(blocking, block = true)
 	}
-	return oa.B_None{}
 }
 ```
 We only allow `max_blocking` amount of blocking task to run 
@@ -138,19 +105,17 @@ tasks to run.
 It is possible to delay the execution of a task without hogging 
 threads with `time.sleep()`. 
 ```odin
-stuff :: proc(a: rawptr) -> oa.Behavior {
+stuff :: proc(a: rawptr) -> {
 	fmt.println("done!", (cast(^int)a)^)
-	return oa.B_None{}
 }
 
-core :: proc(_: rawptr) -> oa.Behavior {
+core :: proc(_: rawptr) {
 	fmt.println("started")
 	for i in 0 ..= 20 {
 		data := new_clone(i, context.temp_allocator)
 		next := time.tick_add(time.tick_now(), 5 * time.Second)
 		oa.go(stuff, data, exe_at = next)
 	}
-	return oa.B_None{}
 }
 ```
 Note that timed tasks will execute *during* or *after* the tick you supplied, 
@@ -160,17 +125,15 @@ i.e. tasks are not garenteed to execute at percisely the tick passed into it.
 It is trival to pass arguments into tasks. As Odin is a simple 
 language, this could only be done via a `rawptr`.
 ```odin
-foo :: proc(a: rawptr) -> oa.Behavior {
+foo :: proc(a: rawptr) {
 	arg := cast(^string)a
 	fmt.println(arg^)
-	return oa.B_None{}
 }
 
-core :: proc(_: rawptr) -> oa.Behavior {
+core :: proc(_: rawptr) {
 	// remember to free it
 	nextarg := new_clone("hi", context.temp_allocator)
 	oa.go(foo, nextarg)
-	return oa.B_None{}
 }
 ```
 
@@ -178,9 +141,8 @@ core :: proc(_: rawptr) -> oa.Behavior {
 You might want to spawn virtual tasks outside of threads managed 
 by oasync, we call this unsafe dispatching:
 ```odin
-task :: proc(_: rawptr) -> oa.Behavior {
+task :: proc(_: rawptr) {
 	fmt.println("hi")
-	return oa.B_None{}
 }
 
 main :: proc() {
@@ -213,13 +175,12 @@ To spawn tasks, oasync injects info into `context.user_ptr`.
 This means that you should NEVER change it. Should you still 
 wish to use `context.user_ptr`, we offer a way to do so.
 ```odin 
-core :: proc(_: rawptr) -> oa.Behavior {
+core :: proc(_: rawptr) {
 	// cast it into a ref carrier
 	ptr := cast(^oa.Ref_Carrier)context.user_ptr
 	// ONLY access the user_ptr field 
 	// do NOT access other fields in Ref_Carrier
 	ptr.user_ptr := ...
-	return oa.B_None{}
 }
 ```
 
@@ -227,14 +188,12 @@ However, please note that the context in a task will not be
 carried over to another task spawned. See below for a 
 demonstration.
 ```odin
-core :: proc(_: rawptr) -> oa.Behavior {
+core :: proc(_: rawptr) {
 	context.user_index = 1
 	oa.go(stuff)
-	return oa.B_None{}
 }
 
-stuff :: proc(_: rawptr) -> oa.Behavior {
+stuff :: proc(_: rawptr) {
 	fmt.println(context.user_index) // 0
-	return oa.B_None{}
 }
 ```

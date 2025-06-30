@@ -15,7 +15,7 @@ tasks may be run outside of threads managed by oasync,
 comes with heavy performance drawback
 */
 go :: proc(
-	p: proc(_: rawptr) -> Behavior,
+	p: proc(_: rawptr),
 	data: rawptr = nil,
 	block: bool = false,
 	coord: ^Coordinator = nil,
@@ -75,7 +75,7 @@ only when -debug flag is passed into the compiler
 */
 init_oa :: proc(
 	coord: ^Coordinator,
-	init_fn: proc(_: rawptr) -> Behavior,
+	init_fn: proc(_: rawptr),
 	init_fn_arg: rawptr = nil,
 	max_workers := 0,
 	max_blocking := 1,
