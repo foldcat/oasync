@@ -23,7 +23,7 @@ Worker :: struct {
 	barrier_ref:      ^sync.Barrier,
 	thread_obj:       ^thread.Thread,
 	localq:           Local_Queue(^Task),
-	run_next:         Task,
+	run_next:         ^Task,
 	id:               u8,
 	coordinator:      ^Coordinator,
 	is_blocking:      bool,

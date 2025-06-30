@@ -59,7 +59,7 @@ compute_blocking_count :: proc(workers: []Worker) -> int {
 	count := 0
 	for &worker in workers {
 		// trace(worker.is_blocking)
-		if sync.atomic_load(&worker.is_blocking) {
+		if worker.is_blocking {
 			count += 1
 		}
 	}
@@ -75,13 +75,13 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 	current_count := compute_blocking_count(worker.coordinator.workers)
 	// trace(get_worker_id(), "current_count is", current_count)
 
-	is_blocking := sync.atomic_load(&t.is_blocking)
+	is_blocking := t.is_blocking
 	if is_blocking {
 		if current_count >= worker.coordinator.max_blocking_count {
 			spawn_task(t)
 			return
 		}
-		sync.atomic_store(&worker.is_blocking, true)
+		worker.is_blocking = true
 		is_blocking = true
 	}
 
