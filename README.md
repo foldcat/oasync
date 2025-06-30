@@ -12,7 +12,7 @@ Now back in active development!
 - supports blocking task pool and scheduling tasks to run in the future
 - depends on ONLY the Odin compiler (just like any Odin libraries)
 - 100% api docs coverage + walkthough (see below)
-- small and commented codebase for those who want to know how oasync works internally
+- codebase kept small and commented for those who want to know how oasync works internally
 
 ## usage
 Note that this library is in a **PRE ALPHA STATE**. It lacks essential features,
