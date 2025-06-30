@@ -93,8 +93,8 @@ up our scheduler and leaving one of our threads out of commission.
 This is why we should spawn blocking tasks in this situation.
 ```odin
 blocking :: proc(_: rawptr) {
-	fmt.println("done")
 	time.sleep(1 * time.Second)
+	fmt.println("done")
 }
 
 core :: proc(_: rawptr) {
