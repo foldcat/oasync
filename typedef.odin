@@ -30,6 +30,15 @@ Worker :: struct {
 	is_stealing:      bool,
 	hogs_main_thread: bool,
 	rng_seed:         i32,
+	task_id_gen:      int,
+}
+
+@(private)
+Task_Id :: struct {
+	// used for unsafe dispatching or the first task dispatched
+	parentless:    bool,
+	parent_worker: u8,
+	task_id:       int,
 }
 
 @(private)
@@ -40,13 +49,11 @@ Task :: struct {
 	arg:         rawptr,
 	is_blocking: bool,
 	is_done:     bool,
+	id:          Task_Id,
 
 	// if a task is scheduled to run later or not
 	// this is NOT garenteed to execute at the exact tick
 	execute_at:  time.Tick,
-
-	// for debug
-	id:          int,
 }
 
 /*

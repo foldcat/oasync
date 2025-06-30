@@ -21,11 +21,11 @@ go :: proc(
 	coord: ^Coordinator = nil,
 	exe_at := time.Tick{},
 ) {
-	task := make_task(p, data, is_blocking = block, execute_at = exe_at)
-
 	if coord == nil {
+		task := make_task(p, data, is_blocking = block, execute_at = exe_at)
 		spawn_task(task)
 	} else {
+		task := make_task(p, data, is_blocking = block, execute_at = exe_at, is_parentless = true)
 		spawn_unsafe_task(task, coord)
 	}
 }
@@ -94,7 +94,7 @@ init_oa :: proc(
 		debug_trace_print     = debug_trace_print,
 	}
 
-	init_task := make_task(init_fn, init_fn_arg)
+	init_task := make_task(init_fn, init_fn_arg, is_parentless = true)
 
 	_init(coord, cfg, init_task)
 }

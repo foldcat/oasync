@@ -253,16 +253,21 @@ make_task :: proc(
 	data: rawptr,
 	is_blocking := false,
 	execute_at := time.Tick{},
+	is_parentless := false,
 ) -> ^Task {
-	id_gen += 1
+
+	tid: Task_Id
+
+	if is_parentless {
+		tid.parentless = true
+	} else {
+		worker := get_worker()
+		tid.task_id = worker.task_id_gen
+		worker.task_id_gen += 1
+	}
+
 	tsk := new_clone(
-		Task {
-			effect = p,
-			arg = data,
-			is_blocking = is_blocking,
-			id = id_gen,
-			execute_at = execute_at,
-		},
+		Task{effect = p, arg = data, is_blocking = is_blocking, id = tid, execute_at = execute_at},
 	)
 
 	return tsk
