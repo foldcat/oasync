@@ -10,6 +10,7 @@ Resource :: struct {
 
 // mutable definition due to odin compiler not allowing this 
 // to be a constant
+@(private)
 Empty_Id := Task_Id {
 	is_empty      = true,
 	parentless    = false,
