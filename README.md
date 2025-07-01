@@ -12,17 +12,19 @@ Now back in active development!
 - supports blocking task pool and scheduling tasks to run in the future
 - depends on ONLY the Odin compiler (just like any Odin libraries)
 - 100% api docs coverage + walkthough (see below)
+- simple and easy to use API
 - codebase kept small and commented for those who want to know how oasync works internally
 
 ## walkthrough
 Note that this library is in a **PRE ALPHA STATE**. It lacks essential features,
 may cause segmented fault, contains breaking changes, and probably has house major bugs.
 
-However, please test it out and provide feedbacks and bug reports!
+However, please test it out and provide feedbacks and bug reports! Do not hesitate 
+if you want to suggest new features, make an issue right here!
 
 Note that oasync is NOT compatable with `core:sync` and any blocking codebase, including 
-and not limited to channels. Native implementation/alternative of said constructs are 
-planned.
+and not limited to channels (an oasync native implementation of channels is available). 
+Native implementation/alternative of many constructs are planned.
 
 In the examples below, we will be importing oasync as so: 
 ```odin 
@@ -71,9 +73,7 @@ core :: proc(_: rawptr) {
 ```
 
 #### running new tasks
-You might want to spawn tasks in the middle of a task, doing 
-this is simple and easy.
-
+It is quite simple to spawn new tasks.
 ```odin
 foo :: proc(_: rawptr) {
 	fmt.println("hi")
@@ -86,8 +86,8 @@ core :: proc(_: rawptr) {
 ```
 
 #### passing in arugments
-It is trival to pass arguments into tasks. As Odin is a simple 
-language, this could only be done via a `rawptr`.
+It is trival to pass arguments into tasks. The lack of typesafety 
+is due to the simplicity of the Odin language.
 ```odin
 foo :: proc(a: rawptr) {
 	arg := cast(^string)a
@@ -104,7 +104,7 @@ core :: proc(_: rawptr) {
 #### blocking tasks
 Sometimes you may want to run blocking tasks that takes a 
 long time to finish, this should be avoided because it hogs 
-up our scheduler and leaving one of our threads out of commission.
+our scheduler and leaving one of our threads out of commission.
 This is why we should spawn blocking tasks in this situation.
 ```odin
 blocking :: proc(_: rawptr) {
@@ -120,12 +120,12 @@ core :: proc(_: rawptr) {
 }
 ```
 We only allow `max_blocking` amount of blocking task to run 
-at the same time, ensuring there is always rooms for non blocking 
+at the same time, ensuring there are always room for non blocking 
 tasks to run.
 
 #### timed schedule
-It is possible to delay the execution of a task without hogging 
-threads with `time.sleep()`. 
+It is possible to delay the execution of a task without needing
+`time.sleep()`, which hogs our scheduler. 
 ```odin
 stuff :: proc(a: rawptr) -> {
 	fmt.println("done!", (cast(^int)a)^)
@@ -168,9 +168,9 @@ This imposes a heavy performance penality and should be
 avoided.
 
 #### resources 
-Resources are mutexes, where only one task is allowed to access 
-one resource, and the resource will be released upon task 
-finishing automatically. Resources will not hog the scheduler.
+Resources are equivalent to mutexes, where only one task is allowed to access 
+each resource, and said resource will be released upon task completion
+automatically. This will not hog the scheduler.
 ```odin
 acquire1 :: proc(_: rawptr) {
 	fmt.println("first acquire")
@@ -206,7 +206,7 @@ The order of acquire might be different, but it should be impossible for
 another task to acquire the same resource while a it is acquired.
 
 Resource is allocated on the heap, call `free_resouce()` in order to 
-destroy it
+destroy it.
 
 #### shutdown
 Shutting down oasync can be done by executing the following 
@@ -219,9 +219,9 @@ thread to terminate instead of calling `thread.terminate`,
 causing additional wait time for the procedure to yield.
 
 ### context system
-To spawn tasks, oasync injects info into `context.user_ptr`. 
+To spawn tasks, oasync injects data into `context.user_ptr`. 
 This means that you should NEVER change it. Should you still 
-wish to use `context.user_ptr`, we offer a way to do so.
+wish to use `context.user_ptr`, the following may be done.
 ```odin 
 core :: proc(_: rawptr) {
 	// cast it into a ref carrier
@@ -247,14 +247,14 @@ stuff :: proc(_: rawptr) {
 ```
 
 ### synchronization primitives
-We provide non-hogging synchronization primitives.
+We provide oasync native synchronization primitives. These primitives 
+will not hog the scheduler unlike `core:sync`.
 ```odin
 import oas "../oasync/sync"
 ```
 
 #### channels
-Channels in oasync is one to many, as implementing coroutines 
-requires a level of hacking I am not willing to do.
+We offer many to one channels.
 
 Note that this is not typesafe due to how rawptr is used for 
 polymorphism. It is also known that the order of elements placed 
