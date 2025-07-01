@@ -38,28 +38,28 @@ walkthough does not cover every procedure and their options.
 To use oasync, we first have to initialize it. 
 ```odin
 main :: proc() {
-  // create a coordinator struct for oasync to store 
-  // its internal state
-  // should NOT be modified by anything but oasync
-	coord: oa.Coordinator
-	oa.init_oa(
-    // pass in the coordinator
-		&coord,
-    // what procedure to dispatch when oasync starts
-		init_fn = core,
-    // a rawptr that will be passed into the init_fn
-		init_fn_arg = nil,
-    // amount of worker threads oasync will run
-    // omit this field or set to 0 for oasync to use 
-    // os.processor_core_count() as its value
-		max_workers = 4,
-    // how many blocking taskes should be allowed 
-    // to execute at the same time
-		max_blocking = 2,
-    // whether to use the main thread as a worker or not, 
-    // counts toward max_workers
-		use_main_thread = true,
-  )
+    // create a coordinator struct for oasync to store 
+    // its internal state
+    // should NOT be modified by anything but oasync
+    coord: oa.Coordinator
+    oa.init_oa(
+        // pass in the coordinator
+        &coord,
+        // what procedure to dispatch when oasync starts
+        init_fn = core,
+        // a rawptr that will be passed into the init_fn
+        init_fn_arg = nil,
+        // amount of worker threads oasync will run
+        // omit this field or set to 0 for oasync to use 
+        // os.processor_core_count() as its value
+        max_workers = 4,
+        // how many blocking taskes should be allowed 
+        // to execute at the same time
+        max_blocking = 2,
+        // whether to use the main thread as a worker or not, 
+        // counts toward max_workers
+        use_main_thread = true,
+    )
 }
 
 // the task to run
