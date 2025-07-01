@@ -80,9 +80,6 @@ foo :: proc(_: rawptr) {
 
 core :: proc(_: rawptr) {
 	fmt.println("core")
-	// foo is the task we want to spawn 
-	// nil is the argument passed into it, rawptr as always 
-	// you may omit it as default parameter of it is nil
 	oa.go(foo) 
 }
 ```
