@@ -35,7 +35,8 @@ walkthough does not cover every procedure and their options.
 
 ### core functionalities
 #### initializing oasync runtime
-To use oasync, we first have to initialize it. 
+To use oasync, we first have to initialize it. Note that the following examples 
+will all be executed with the following configuration.
 ```odin
 main :: proc() {
     // create a coordinator struct for oasync to store 
