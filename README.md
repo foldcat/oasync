@@ -256,7 +256,7 @@ import oas "../oasync/sync"
 #### channels
 We offer many to one channels.
 
-Note that this is not typesafe due to how rawptr is used for 
+Note that this is not typesafe due to how `rawptr` is used for 
 polymorphism. It is also known that the order of elements placed 
 into the channel may not be sequencially consistant.
 ```odin
