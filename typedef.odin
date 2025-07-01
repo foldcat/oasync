@@ -23,6 +23,7 @@ Worker :: struct {
 	barrier_ref:      ^sync.Barrier,
 	thread_obj:       ^thread.Thread,
 	localq:           Local_Queue(^Task),
+	current_running:  ^Task,
 	run_next:         ^Task,
 	id:               u8,
 	coordinator:      ^Coordinator,
@@ -37,6 +38,7 @@ Worker :: struct {
 // is a bit_field as it can be loaded by sync.atomic_load
 Task_Id :: bit_field i64 {
 	// used for unsafe dispatching or the first task dispatched
+	is_empty:      bool | 8,
 	parentless:    bool | 8,
 	parent_worker: u8   | 8,
 	task_id:       u32  | 32,

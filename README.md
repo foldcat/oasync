@@ -14,7 +14,7 @@ Now back in active development!
 - 100% api docs coverage + walkthough (see below)
 - codebase kept small and commented for those who want to know how oasync works internally
 
-## usage
+## walkthrough
 Note that this library is in a **PRE ALPHA STATE**. It lacks essential features,
 may cause segmented fault, contains breaking changes, and probably has house major bugs.
 
@@ -33,7 +33,8 @@ Besides the walkthough, I **HEAVILY** recommend doing `odin doc .` in the
 root directory of oasync to read the API documentation. The following 
 walkthough does not cover every procedure and their options.
 
-### initializing oasync runtime
+### core functionalities
+#### initializing oasync runtime
 To use oasync, we first have to initialize it. 
 ```odin
 main :: proc() {
@@ -68,7 +69,7 @@ core :: proc(_: rawptr) {
 }
 ```
 
-### running new tasks
+#### running new tasks
 You might want to spawn tasks in the middle of a task, doing 
 this is simple and easy.
 
@@ -82,11 +83,27 @@ core :: proc(_: rawptr) {
 	// foo is the task we want to spawn 
 	// nil is the argument passed into it, rawptr as always 
 	// you may omit it as default parameter of it is nil
-	oa.go(foo, nil) 
+	oa.go(foo) 
 }
 ```
 
-### blocking tasks
+#### passing in arugments
+It is trival to pass arguments into tasks. As Odin is a simple 
+language, this could only be done via a `rawptr`.
+```odin
+foo :: proc(a: rawptr) {
+	arg := cast(^string)a
+	fmt.println(arg^)
+}
+
+core :: proc(_: rawptr) {
+	// remember to free it
+	nextarg := new_clone("hi", context.temp_allocator)
+	oa.go(foo, nextarg)
+}
+```
+
+#### blocking tasks
 Sometimes you may want to run blocking tasks that takes a 
 long time to finish, this should be avoided because it hogs 
 up our scheduler and leaving one of our threads out of commission.
@@ -108,7 +125,7 @@ We only allow `max_blocking` amount of blocking task to run
 at the same time, ensuring there is always rooms for non blocking 
 tasks to run.
 
-### timed schedule
+#### timed schedule
 It is possible to delay the execution of a task without hogging 
 threads with `time.sleep()`. 
 ```odin
@@ -128,23 +145,8 @@ core :: proc(_: rawptr) {
 Note that timed tasks will execute *during* or *after* the tick you supplied, 
 i.e. tasks are not garenteed to execute at percisely the tick passed into it.
 
-### passing in arugments
-It is trival to pass arguments into tasks. As Odin is a simple 
-language, this could only be done via a `rawptr`.
-```odin
-foo :: proc(a: rawptr) {
-	arg := cast(^string)a
-	fmt.println(arg^)
-}
 
-core :: proc(_: rawptr) {
-	// remember to free it
-	nextarg := new_clone("hi", context.temp_allocator)
-	oa.go(foo, nextarg)
-}
-```
-
-### unsafe dispatching
+#### unsafe dispatching
 You might want to spawn virtual tasks outside of threads managed 
 by oasync, we call this unsafe dispatching:
 ```odin
@@ -167,7 +169,48 @@ dispatching tasks outside of threads managed not by oasync.
 This imposes a heavy performance penality and should be 
 avoided.
 
-### shutdown
+#### resources 
+Resources are mutexes, where only one task is allowed to access 
+one resource, and the resource will be released upon task 
+finishing automatically. Resources will not hog the scheduler.
+```odin
+acquire1 :: proc(_: rawptr) {
+	fmt.println("first acquire")
+	time.sleep(3 * time.Second)
+	fmt.println("first release")
+}
+
+acquire2 :: proc(_: rawptr) {
+	fmt.println("second acquire")
+	time.sleep(3 * time.Second)
+	fmt.println("second release")
+}
+
+core :: proc(_: rawptr) {
+	fmt.println("started")
+
+	res := oa.make_resource()
+	// in real world, use the blocking pool
+	oa.go(acquire1, acq = res)
+	oa.go(acquire2, acq = res)
+}
+
+/*
+started
+first acquire
+first release
+second acquire
+second release
+*/
+```
+
+The order of acquire might be different, but it should be impossible for 
+another task to acquire the same resource while a it is acquired.
+
+Resource is allocated on the heap, call `free_resouce()` in order to 
+destroy it
+
+#### shutdown
 Shutting down oasync can be done by executing the following 
 in a virtual task.
 ```odin
@@ -204,3 +247,33 @@ stuff :: proc(_: rawptr) {
 	fmt.println(context.user_index) // 0
 }
 ```
+
+### synchronization primitives
+We provide non-hogging synchronization primitives.
+```odin
+import oas "../oasync/sync"
+```
+
+#### channels
+Channels in oasync is one to many, as implementing coroutines 
+requires a level of hacking I am not willing to do.
+
+Note that this is not typesafe due to how rawptr is used for 
+polymorphism. It is also known that the order of elements placed 
+into the channel may not be sequencially consistant.
+```odin
+consumer :: proc(a: rawptr) {
+	input := (cast(^int)a)^
+	fmt.println(input)
+}
+
+core :: proc(_: rawptr) {
+	chan := oas.make_chan(consumer)
+	oas.c_put(chan, 1)
+	oas.c_put(chan, 2)
+	oas.c_put(chan, 3)
+}
+```
+
+In order to shutdown the channel, `c_stop()` may be used. 
+Seek API documentation on information about it.

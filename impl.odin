@@ -7,12 +7,6 @@ import "core:sync"
 import "core:thread"
 import "core:time"
 
-// get worker from context
-get_worker :: proc() -> ^Worker {
-	carrier := cast(^Ref_Carrier)context.user_ptr
-	return carrier.worker
-}
-
 // fast random number generator via linear congruential 
 // algorithm
 // seed is pulled from worker, thus only works 
@@ -72,14 +66,16 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 	// if it is running a task, it isn't stealing
 	worker.is_stealing = false
 
-	current_count := compute_blocking_count(worker.coordinator.workers)
-	// trace(get_worker_id(), "current_count is", current_count)
+	worker.current_running = t
 
 	// failed to acquire
 	if t.res_acquire != nil && !acquire_res(t.res_acquire, t) {
 		spawn_task(t)
 		return
 	}
+
+	current_count := compute_blocking_count(worker.coordinator.workers)
+	// trace(get_worker_id(), "current_count is", current_count)
 
 	if t.is_blocking {
 		if current_count >= worker.coordinator.max_blocking_count {

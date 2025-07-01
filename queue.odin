@@ -3,11 +3,7 @@ package oasync
 
 import "core:sync"
 
-when ODIN_DEBUG {
-	ARRAY_SIZE :: 8
-} else {
-	ARRAY_SIZE :: 256
-}
+ARRAY_SIZE :: 256
 
 // https://fzn.fr/readings/ppopp13.pdf
 

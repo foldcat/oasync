@@ -38,6 +38,16 @@ go :: proc(
 	}
 }
 
+
+/*
+get worker from context
+*/
+get_worker :: proc() -> ^Worker {
+	carrier := cast(^Ref_Carrier)context.user_ptr
+	return carrier.worker
+}
+
+
 /*
 obtains the worker id when executed inside a task
 might segfault otherwise
