@@ -24,6 +24,7 @@ chan_runloop :: proc(c: rawptr) {
 	if chan.should_close && !chan.graceful_shutdown {
 		// clean up
 		queue.destroy(&chan.q)
+		oa.free_resource(chan.res)
 		free(chan)
 		return
 	}
@@ -32,6 +33,7 @@ chan_runloop :: proc(c: rawptr) {
 	if !ok {
 		if chan.should_close && chan.graceful_shutdown {
 			queue.destroy(&chan.q)
+			oa.free_resource(chan.res)
 			free(chan)
 			return
 		}
