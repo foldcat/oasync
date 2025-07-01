@@ -20,12 +20,20 @@ go :: proc(
 	block: bool = false,
 	coord: ^Coordinator = nil,
 	exe_at := time.Tick{},
+	acq: ^Resource = nil,
 ) {
 	if coord == nil {
-		task := make_task(p, data, is_blocking = block, execute_at = exe_at)
+		task := make_task(p, data, is_blocking = block, execute_at = exe_at, acquire = acq)
 		spawn_task(task)
 	} else {
-		task := make_task(p, data, is_blocking = block, execute_at = exe_at, is_parentless = true)
+		task := make_task(
+			p,
+			data,
+			is_blocking = block,
+			execute_at = exe_at,
+			is_parentless = true,
+			acquire = acq,
+		)
 		spawn_unsafe_task(task, coord)
 	}
 }

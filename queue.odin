@@ -98,7 +98,6 @@ queue_steal :: proc(q: ^Local_Queue($T)) -> (x: T, okay: bool) {
 			.Relaxed,
 		); !ok {
 			// failed race
-			trace("failed race")
 			return x, false
 		}
 		return x, true

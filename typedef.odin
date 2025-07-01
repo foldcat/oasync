@@ -33,7 +33,6 @@ Worker :: struct {
 	task_id_gen:      u32,
 }
 
-@(private)
 // 16 bits wasted but we could work with this
 // is a bit_field as it can be loaded by sync.atomic_load
 Task_Id :: bit_field i64 {
@@ -43,7 +42,6 @@ Task_Id :: bit_field i64 {
 	task_id:       u32  | 32,
 }
 
-@(private)
 Task :: struct {
 	// void * generic
 	// sometimes i wish for a more complex type system
@@ -56,6 +54,9 @@ Task :: struct {
 	// if a task is scheduled to run later or not
 	// this is NOT garenteed to execute at the exact tick
 	execute_at:  time.Tick,
+
+	// what resource to acquire
+	res_acquire: ^Resource,
 }
 
 /*

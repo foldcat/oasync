@@ -75,14 +75,18 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 	current_count := compute_blocking_count(worker.coordinator.workers)
 	// trace(get_worker_id(), "current_count is", current_count)
 
-	is_blocking := t.is_blocking
-	if is_blocking {
+	// failed to acquire
+	if t.res_acquire != nil && !acquire_res(t.res_acquire, t) {
+		spawn_task(t)
+		return
+	}
+
+	if t.is_blocking {
 		if current_count >= worker.coordinator.max_blocking_count {
 			spawn_task(t)
 			return
 		}
 		worker.is_blocking = true
-		is_blocking = true
 	}
 
 	if t.execute_at != EMPTY_TICK {
@@ -126,7 +130,7 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 		end_time := time.tick_now()
 		diff := time.tick_diff(start_time, end_time)
 		exec_duration := time.duration_milliseconds(diff)
-		if exec_duration > 40 && !is_blocking {
+		if exec_duration > 40 && !t.is_blocking {
 			log.warn(
 				"oasync debug runtime detected a task executing with duration longer than 40ms,",
 				"your CPU is likely starving,",
@@ -137,8 +141,12 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 
 	}
 
-	if is_blocking {
-		sync.atomic_store(&worker.is_blocking, false)
+	if t.res_acquire != nil {
+		release_res(t.res_acquire, t)
+	}
+
+	if t.is_blocking {
+		worker.is_blocking = false
 	}
 
 	free(t)
@@ -244,18 +252,14 @@ setup_thread :: proc(worker: ^Worker) -> ^thread.Thread {
 
 }
 
-// doesn't need to be thread safe
-// this is for debug only
-id_gen: int
-
 make_task :: proc(
 	p: proc(_: rawptr),
 	data: rawptr,
 	is_blocking := false,
 	execute_at := time.Tick{},
 	is_parentless := false,
+	acquire: ^Resource = nil,
 ) -> ^Task {
-
 	tid: Task_Id
 
 	if is_parentless {
@@ -267,7 +271,14 @@ make_task :: proc(
 	}
 
 	tsk := new_clone(
-		Task{effect = p, arg = data, is_blocking = is_blocking, id = tid, execute_at = execute_at},
+		Task {
+			effect = p,
+			arg = data,
+			is_blocking = is_blocking,
+			id = tid,
+			execute_at = execute_at,
+			res_acquire = acquire,
+		},
 	)
 
 	return tsk
