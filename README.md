@@ -262,6 +262,8 @@ There are two strategies for backpressure: Lossy and Loseless.
 
 ```odin
 foo :: proc(a: rawptr) {
+    // reminder to never time.sleep outside of a 
+    // blocking pool
     time.sleep(3 * time.Second)
     fmt.println((cast(^int)a)^)
     free(a)
