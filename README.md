@@ -167,47 +167,6 @@ dispatching tasks outside of threads managed not by oasync.
 This imposes a heavy performance penality and should be 
 avoided.
 
-#### resources 
-Resources are equivalent to mutexes, where only one task is allowed to access 
-each resource, and said resource will be released upon task completion
-automatically. This will not hog the scheduler.
-```odin
-acquire1 :: proc(_: rawptr) {
-	fmt.println("first acquire")
-	time.sleep(3 * time.Second)
-	fmt.println("first release")
-}
-
-acquire2 :: proc(_: rawptr) {
-	fmt.println("second acquire")
-	time.sleep(3 * time.Second)
-	fmt.println("second release")
-}
-
-core :: proc(_: rawptr) {
-	fmt.println("started")
-
-	res := oa.make_resource()
-	// in real world, use the blocking pool
-	oa.go(acquire1, acq = res)
-	oa.go(acquire2, acq = res)
-}
-
-/*
-started
-first acquire
-first release
-second acquire
-second release
-*/
-```
-
-The order of acquire might be different, but it should be impossible for 
-another task to acquire the same resource while a it is acquired.
-
-Resource is allocated on the heap, call `free_resouce()` in order to 
-destroy it.
-
 #### shutdown
 Shutting down oasync can be done by executing the following 
 in a virtual task.
@@ -252,6 +211,72 @@ will not hog the scheduler unlike `core:sync`.
 ```odin
 import oas "../oasync/sync"
 ```
+
+#### resources 
+Resources are equivalent to mutexes, where only one task is allowed to access 
+each resource, and said resource will be released upon task completion
+automatically. This will not hog the scheduler.
+```odin
+acquire1 :: proc(_: rawptr) {
+	fmt.println("first acquire")
+	time.sleep(3 * time.Second)
+	fmt.println("first release")
+}
+
+acquire2 :: proc(_: rawptr) {
+	fmt.println("second acquire")
+	time.sleep(3 * time.Second)
+	fmt.println("second release")
+}
+
+core :: proc(_: rawptr) {
+	fmt.println("started")
+
+	res := oa.make_resource()
+	// in real world, use the blocking pool
+	oa.go(acquire1, acq = res)
+	oa.go(acquire2, acq = res)
+}
+
+/*
+started
+first acquire
+first release
+second acquire
+second release
+*/
+```
+
+The order of acquire might be different, but it should be impossible for 
+another task to acquire the same resource while a it is acquired.
+
+Resource is allocated on the heap, call `free_resouce()` in order to 
+destroy it.
+
+#### backpressure
+Backpressure allows us to rate limit task spawns.
+
+There are two strategies for backpressure: Lossy and Loseless.
+- Lossy: task will be ran in presence of backpressure
+- Loseless: task will not execute until backpressure is alleviated.
+
+```odin
+foo :: proc(a: rawptr) {
+	time.sleep(3 * time.Second)
+	fmt.println((cast(^int)a)^)
+  free(a)
+}
+
+core :: proc(_: rawptr) {
+    // allow only 3 tasks to run at the same time
+	bp := oa.make_bp(3, .Lossy)
+	for i in 1 ..= 5 {
+		inp := new_clone(i)
+		oa.go(foo, inp, bp = bp)
+	}
+}
+```
+
 
 #### channels
 We offer many to one channels.
