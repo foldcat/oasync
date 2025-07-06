@@ -127,7 +127,7 @@ tasks to run.
 It is possible to delay the execution of a task without needing
 `time.sleep()`, which hogs our scheduler. 
 ```odin
-stuff :: proc(a: rawptr) -> {
+stuff :: proc(a: rawptr) {
 	fmt.println("done!", (cast(^int)a)^)
 }
 
@@ -135,8 +135,7 @@ core :: proc(_: rawptr) {
 	fmt.println("started")
 	for i in 0 ..= 20 {
 		data := new_clone(i, context.temp_allocator)
-		next := time.tick_add(time.tick_now(), 5 * time.Second)
-		oa.go(stuff, data, exe_at = next)
+		oa.go(stuff, data, delay = 5 * time.Second)
 	}
 }
 ```

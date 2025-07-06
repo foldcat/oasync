@@ -8,8 +8,7 @@ dispatch a task
 
 data: a rawptr argument to pass into your task
 block: if true, dispatch said task in blocking mode
-exe_at: when supplied, task will execute during or after 
-the supplied tick
+delay: time.Duration delay for the task to run
 coord: if not nil, spawn task in unsafe mode, where 
 tasks may be run outside of threads managed by oasync,
 comes with heavy performance drawback
@@ -21,19 +20,31 @@ go :: proc(
 	data: rawptr = nil,
 	block: bool = false,
 	coord: ^Coordinator = nil,
-	exe_at := time.Tick{},
+	delay: time.Duration = 0,
 	res: ^Resource = nil,
 	bp: ^Backpressure = nil,
 ) {
+	execute_at: time.Tick
+	if delay != 0 {
+		execute_at = time.tick_add(time.tick_now(), delay)
+	}
+
 	if coord == nil {
-		task := make_task(p, data, is_blocking = block, execute_at = exe_at, res = res, bp = bp)
+		task := make_task(
+			p,
+			data,
+			is_blocking = block,
+			execute_at = execute_at,
+			res = res,
+			bp = bp,
+		)
 		spawn_task(task)
 	} else {
 		task := make_task(
 			p,
 			data,
 			is_blocking = block,
-			execute_at = exe_at,
+			execute_at = execute_at,
 			is_parentless = true,
 			res = res,
 		)
