@@ -39,14 +39,14 @@ chan_runloop :: proc(c: rawptr) {
 		}
 
 		// no item, retry
-		oa.go(chan_runloop, c, acq = chan.res)
+		oa.go(chan_runloop, c, res = chan.res)
 
 		return
 	}
 
 	chan.drainer(item)
 	free(item)
-	oa.go(chan_runloop, c, acq = chan.res)
+	oa.go(chan_runloop, c, res = chan.res)
 }
 
 /*
@@ -60,7 +60,7 @@ make_chan :: proc(drainer: proc(_: rawptr)) -> ^Chan {
 	c.drainer = drainer
 	queue.init(&c.q)
 	c.res = oa.make_resource()
-	oa.go(chan_runloop, c, acq = c.res)
+	oa.go(chan_runloop, c, res = c.res)
 
 	return c
 }
@@ -85,7 +85,7 @@ c_put :: proc(c: ^Chan, item: $T) {
 	}
 	cloned_item := new_clone(item)
 	a := new_clone(Packed_Chan_Item{c = c, item = cloned_item})
-	oa.go(_c_put, a, acq = c.res)
+	oa.go(_c_put, a, res = c.res)
 }
 
 /*

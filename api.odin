@@ -13,6 +13,8 @@ the supplied tick
 coord: if not nil, spawn task in unsafe mode, where 
 tasks may be run outside of threads managed by oasync,
 comes with heavy performance drawback
+res: resource to acquire
+bp: backpressure to acquire
 */
 go :: proc(
 	p: proc(_: rawptr),
@@ -20,10 +22,11 @@ go :: proc(
 	block: bool = false,
 	coord: ^Coordinator = nil,
 	exe_at := time.Tick{},
-	acq: ^Resource = nil,
+	res: ^Resource = nil,
+	bp: ^Backpressure = nil,
 ) {
 	if coord == nil {
-		task := make_task(p, data, is_blocking = block, execute_at = exe_at, acquire = acq)
+		task := make_task(p, data, is_blocking = block, execute_at = exe_at, res = res, bp = bp)
 		spawn_task(task)
 	} else {
 		task := make_task(
@@ -32,7 +35,7 @@ go :: proc(
 			is_blocking = block,
 			execute_at = exe_at,
 			is_parentless = true,
-			acquire = acq,
+			res = res,
 		)
 		spawn_unsafe_task(task, coord)
 	}

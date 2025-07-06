@@ -74,6 +74,18 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 		return
 	}
 
+	if t.backpressure_acquire != nil {
+		switch acquire_bp(t.backpressure_acquire) {
+		case .Run:
+		// continue
+		case .Drop:
+			return
+		case .Requeue:
+			spawn_task(t)
+			return
+		}
+	}
+
 	current_count := compute_blocking_count(worker.coordinator.workers)
 	// trace(get_worker_id(), "current_count is", current_count)
 
@@ -141,8 +153,23 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 		release_res(t.res_acquire, t)
 	}
 
+	if t.backpressure_acquire != nil {
+		release_bp(t.backpressure_acquire)
+	}
+
 	if t.is_blocking {
 		worker.is_blocking = false
+	}
+	if t.backpressure_acquire != nil {
+		switch acquire_bp(t.backpressure_acquire) {
+		case .Run:
+		// continue
+		case .Drop:
+			return
+		case .Requeue:
+			spawn_task(t)
+			return
+		}
 	}
 
 	free(t)
@@ -254,7 +281,8 @@ make_task :: proc(
 	is_blocking := false,
 	execute_at := time.Tick{},
 	is_parentless := false,
-	acquire: ^Resource = nil,
+	res: ^Resource = nil,
+	bp: ^Backpressure = nil,
 ) -> ^Task {
 	tid: Task_Id
 
@@ -273,7 +301,8 @@ make_task :: proc(
 			is_blocking = is_blocking,
 			id = tid,
 			execute_at = execute_at,
-			res_acquire = acquire,
+			res_acquire = res,
+			backpressure_acquire = bp,
 		},
 	)
 

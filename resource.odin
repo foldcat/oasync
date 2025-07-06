@@ -1,5 +1,6 @@
 package oasync
 
+import "core:container/queue"
 import "core:fmt"
 import "core:sync"
 
@@ -46,4 +47,100 @@ release_res :: proc(r: ^Resource, t: ^Task) -> bool {
 		.Acquire,
 	)
 	return ok
+}
+
+
+/*
+backpressure allows you to control how many tasks (max) are run at 
+the same time, 2 modes are offered
+
+should more than max amount of tasks tries to acquire 
+backpressure,
+Loseless: the task will block until backpressure is alleviated
+Lossy: the task will not be ran
+*/
+Backpressure :: struct {
+	max:              int,
+	current_runcount: int,
+	mode:             BP_Mode,
+	is_closed:        bool,
+}
+
+BP_Mode :: enum {
+	Loseless,
+	Lossy,
+}
+
+// what to do after acquiring backpressure
+BP_Return :: enum {
+	// drop the task, do not run it
+	Drop,
+	// run the task
+	Run,
+	// put the task back into a queue
+	Requeue,
+}
+
+/*
+make a backpressure, seek documentation on the 
+Backpressure struct for more info
+
+allocated on the heap
+*/
+make_bp :: proc(max: int, mode: BP_Mode) -> ^Backpressure {
+	return new_clone(Backpressure{max = max, mode = mode})
+}
+
+
+/*
+wait for all the tasks to be done and frees the backpressure 
+in the time of waiting, new tasks dispatched through backpressure 
+is dropped 
+
+should all remaining tasks be done, frees the backpressure struct
+
+attempting to reacquire may result in segmented fault
+*/
+destroy_bp :: proc(bp: ^Backpressure) {
+	bp.is_closed = true
+	if sync.atomic_load(&bp.current_runcount) == 0 {
+		free(bp)
+	}
+}
+
+
+// task should be push back into the local queue should 
+// this procedure return false
+acquire_bp :: proc(bp: ^Backpressure) -> BP_Return {
+	if bp.is_closed {
+		return .Drop
+	}
+	can_run := sync.atomic_load(&bp.current_runcount) < bp.max
+	if can_run {
+		sync.atomic_add(&bp.current_runcount, 1)
+	}
+	switch bp.mode {
+	case .Loseless:
+		if can_run {
+			return .Run
+		} else {
+			return .Requeue
+		}
+	case .Lossy:
+		if can_run {
+			return .Run
+		} else {
+			return .Drop
+		}
+	}
+	panic("unreachable")
+}
+
+release_bp :: proc(bp: ^Backpressure) {
+	sync.atomic_sub(&bp.current_runcount, 1)
+	if bp.is_closed == true {
+		if sync.atomic_load(&bp.current_runcount) == 0 {
+			free(bp)
+		}
+	}
 }
