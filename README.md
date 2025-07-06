@@ -207,7 +207,8 @@ stuff :: proc(_: rawptr) {
 
 ### synchronization primitives
 We provide oasync native synchronization primitives. These primitives 
-will not hog the scheduler unlike `core:sync`.
+will not hog the scheduler unlike `core:sync`. Some primitives are 
+provided by `../oasync` and others are provided by `../oasync/sync`
 ```odin
 import oas "../oasync/sync"
 ```
