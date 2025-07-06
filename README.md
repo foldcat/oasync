@@ -262,18 +262,18 @@ There are two strategies for backpressure: Lossy and Loseless.
 
 ```odin
 foo :: proc(a: rawptr) {
-	time.sleep(3 * time.Second)
-	fmt.println((cast(^int)a)^)
-  free(a)
+    time.sleep(3 * time.Second)
+    fmt.println((cast(^int)a)^)
+    free(a)
 }
 
 core :: proc(_: rawptr) {
     // allow only 3 tasks to run at the same time
-	bp := oa.make_bp(3, .Lossy)
-	for i in 1 ..= 5 {
-		inp := new_clone(i)
-		oa.go(foo, inp, bp = bp)
-	}
+    bp := oa.make_bp(3, .Lossy)
+    for i in 1 ..= 5 {
+        inp := new_clone(i)
+        oa.go(foo, inp, bp = bp)
+    }
 }
 ```
 
