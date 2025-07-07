@@ -2,6 +2,7 @@ package oasync
 
 import "core:container/queue"
 import "core:fmt"
+import "core:slice"
 import "core:sync"
 
 // a mutex acquired by a task
@@ -143,4 +144,48 @@ release_bp :: proc(bp: ^Backpressure) {
 			free(bp)
 		}
 	}
+}
+
+/*
+allows a set of tasks to wait unti the amount of waiting 
+tasks reaches a goal
+*/
+Cyclic_Barrier :: struct {
+	goal:             int,
+	queue:            queue.Queue(Task_Id),
+	release_waitlist: [dynamic]Task_Id,
+	mutex:            ^Resource,
+}
+
+acquire_cb :: proc(cb: ^Cyclic_Barrier, t: ^Task) -> bool {
+	// can't acquire resource 
+	// try again
+	if !acquire_res(cb.mutex, t) {
+		return false
+	}
+	defer release_res(cb.mutex, t)
+
+	// search for item in release waitlist
+	for item, idx in cb.release_waitlist {
+		if item == t.id {
+			// item is in release waitlist
+			// delete it
+			unordered_remove(&cb.release_waitlist, idx)
+			// allow it to execute
+			return true
+		}
+	}
+
+	// is goal reached?
+	if queue.len(cb.queue) >= cb.goal {
+		for _ in 1 ..= cb.goal {
+			item := queue.pop_front(&cb.queue)
+			append(&cb.release_waitlist, item)
+		}
+	}
+
+	// push into waiting
+	queue.push_back(&cb.queue, t.id)
+
+	return false
 }
