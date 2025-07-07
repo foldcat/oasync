@@ -68,8 +68,14 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 
 	worker.current_running = t
 
-	// failed to acquire
+	// resources fail to acquire
 	if t.res_acquire != nil && !acquire_res(t.res_acquire, t) {
+		spawn_task(t)
+		return
+	}
+
+	// cyclic barrier fail to acquire
+	if t.cyclic_barrier != nil && !acquire_cb(t.cyclic_barrier, t) {
 		spawn_task(t)
 		return
 	}
@@ -283,6 +289,7 @@ make_task :: proc(
 	is_parentless := false,
 	res: ^Resource = nil,
 	bp: ^Backpressure = nil,
+	cb: ^Cyclic_Barrier = nil,
 ) -> ^Task {
 	tid: Task_Id
 
@@ -303,6 +310,7 @@ make_task :: proc(
 			execute_at = execute_at,
 			res_acquire = res,
 			backpressure_acquire = bp,
+			cyclic_barrier = cb,
 		},
 	)
 

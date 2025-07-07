@@ -153,8 +153,29 @@ tasks reaches a goal
 Cyclic_Barrier :: struct {
 	goal:             int,
 	queue:            queue.Queue(Task_Id),
-	release_waitlist: [dynamic]Task_Id,
+	release_waitlist: ^[dynamic]Task_Id,
 	mutex:            ^Resource,
+	set:              ^map[Task_Id]bool,
+}
+
+// make a cyclic barrier, see Cyclic_Barrier struct
+make_cb :: proc(goal: int) -> ^Cyclic_Barrier {
+	cb := new(Cyclic_Barrier)
+	queue.init(&cb.queue)
+	res := make_resource()
+	cb.mutex = res
+	set := new(map[Task_Id]bool)
+	cb.set = set
+	cb.release_waitlist = new([dynamic]Task_Id)
+	cb.goal = goal
+	return cb
+}
+
+destroy_cb :: proc(cb: ^Cyclic_Barrier) {
+	queue.destroy(&cb.queue)
+	free_resource(cb.mutex)
+	delete(cb.release_waitlist^)
+	delete(cb.set^)
 }
 
 acquire_cb :: proc(cb: ^Cyclic_Barrier, t: ^Task) -> bool {
@@ -170,7 +191,9 @@ acquire_cb :: proc(cb: ^Cyclic_Barrier, t: ^Task) -> bool {
 		if item == t.id {
 			// item is in release waitlist
 			// delete it
-			unordered_remove(&cb.release_waitlist, idx)
+			unordered_remove(cb.release_waitlist, idx)
+			// also delete the set item
+			delete_key(cb.set, item)
 			// allow it to execute
 			return true
 		}
@@ -180,12 +203,19 @@ acquire_cb :: proc(cb: ^Cyclic_Barrier, t: ^Task) -> bool {
 	if queue.len(cb.queue) >= cb.goal {
 		for _ in 1 ..= cb.goal {
 			item := queue.pop_front(&cb.queue)
-			append(&cb.release_waitlist, item)
+			append(cb.release_waitlist, item)
 		}
 	}
 
 	// push into waiting
-	queue.push_back(&cb.queue, t.id)
+	if t.id not_in cb.set {
+		trace("push into waiting")
+		queue.push_back(&cb.queue, t.id)
+		// we use a map as a set 
+		// the value of the items doesn't matter 
+		// we only care if it exists or not
+		cb.set[t.id] = false
+	}
 
 	return false
 }

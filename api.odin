@@ -23,6 +23,7 @@ go :: proc(
 	delay: time.Duration = 0,
 	res: ^Resource = nil,
 	bp: ^Backpressure = nil,
+	cb: ^Cyclic_Barrier = nil,
 ) {
 	execute_at: time.Tick
 	if delay != 0 {
@@ -37,6 +38,7 @@ go :: proc(
 			execute_at = execute_at,
 			res = res,
 			bp = bp,
+			cb = cb,
 		)
 		spawn_task(task)
 	} else {
@@ -47,6 +49,7 @@ go :: proc(
 			execute_at = execute_at,
 			is_parentless = true,
 			res = res,
+			cb = cb,
 		)
 		spawn_unsafe_task(task, coord)
 	}

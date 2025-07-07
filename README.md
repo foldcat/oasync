@@ -279,6 +279,40 @@ core :: proc(_: rawptr) {
 }
 ```
 
+#### cyclic barrier
+Cyclic barriers are re-usable synchronization primitives 
+that allows a set amount of tasks to wait until they've all reached the same point.
+
+Use `oa.destroy_cb` to free it. Usage after destruction may result in 
+segmented fault.
+
+```odin
+stuff :: proc(a: rawptr) {
+    fmt.println("done!")
+}
+
+core :: proc(_: rawptr) {
+    fmt.println("started")
+    cb := oa.make_cb(2)
+
+    for i in 1 ..= 2 {
+        oa.go(stuff, cb = cb)
+        time.sleep(1 * time.Second)
+        oa.go(stuff, cb = cb)
+        time.sleep(1 * time.Second)
+    }
+}
+
+/* 
+*nothing for 1 second*
+done!
+done!
+*nothing for 2 seconds*
+done!
+done!
+*/
+
+```
 
 #### channels
 We offer many to one channels.

@@ -57,11 +57,10 @@ Task :: struct {
 	// this is NOT garenteed to execute at the exact tick
 	execute_at:           time.Tick,
 
-	// what resource to acquire
+	// concurrency primitives
 	res_acquire:          ^Resource,
-
-	// backpressure
 	backpressure_acquire: ^Backpressure,
+	cyclic_barrier:       ^Cyclic_Barrier,
 }
 
 /*
