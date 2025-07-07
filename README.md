@@ -212,10 +212,18 @@ provided by `../oasync` and others are provided by `../oasync/sync`
 import oas "../oasync/sync"
 ```
 
+Each destructor procedure may have unexpected behaviors, it 
+is recommended to seek API documentations.
+
+Note that you should NEVER use the primitives after calling the
+destructor procedures, since it may cause segmented fault.
+
 #### resources 
 Resources are equivalent to mutexes, where only one task is allowed to access 
 each resource, and said resource will be released upon task completion
 automatically. This will not hog the scheduler.
+
+`free_resouce()` may be used to delete it.
 ```odin
 acquire1 :: proc(_: rawptr) {
 	fmt.println("first acquire")
@@ -260,6 +268,8 @@ There are two strategies for backpressure: Lossy and Loseless.
 - Lossy: task will be ran in presence of backpressure
 - Loseless: task will not execute until backpressure is alleviated.
 
+Use `oa.destroy_bp` to free it.
+
 ```odin
 foo :: proc(a: rawptr) {
     // reminder to never time.sleep outside of a 
@@ -283,8 +293,7 @@ core :: proc(_: rawptr) {
 Cyclic barriers are re-usable synchronization primitives 
 that allows a set amount of tasks to wait until they've all reached the same point.
 
-Use `oa.destroy_cb` to free it. Usage after destruction may result in 
-segmented fault.
+Use `oa.destroy_cb` to free it.
 
 ```odin
 stuff :: proc(a: rawptr) {
@@ -335,4 +344,3 @@ core :: proc(_: rawptr) {
 ```
 
 In order to shutdown the channel, `c_stop()` may be used. 
-Seek API documentation on information about it.
