@@ -69,19 +69,19 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 	worker.current_running = t
 
 	// resources fail to acquire
-	if t.res_acquire != nil && !acquire_res(t.res_acquire, t) {
+	if t.mods.resource != nil && !acquire_res(t.mods.resource, t) {
 		spawn_task(t)
 		return
 	}
 
 	// cyclic barrier fail to acquire
-	if t.cyclic_barrier != nil && !acquire_cb(t.cyclic_barrier, t) {
+	if t.mods.cyclic_barrier != nil && !acquire_cb(t.mods.cyclic_barrier, t) {
 		spawn_task(t)
 		return
 	}
 
-	if t.backpressure_acquire != nil {
-		switch acquire_bp(t.backpressure_acquire) {
+	if t.mods.backpressure != nil {
+		switch acquire_bp(t.mods.backpressure) {
 		case .Run:
 		// continue
 		case .Drop:
@@ -103,9 +103,9 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 		worker.is_blocking = true
 	}
 
-	if t.execute_at != EMPTY_TICK {
+	if t.mods.execute_at != EMPTY_TICK {
 		now := time.tick_now()
-		diff := time.tick_diff(t.execute_at, now)
+		diff := time.tick_diff(t.mods.execute_at, now)
 		if time.duration_milliseconds(diff) <= 0 {
 			// it is in future
 			// we are not executing tasks that is supposed to be 
@@ -155,19 +155,19 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 
 	}
 
-	if t.res_acquire != nil {
-		release_res(t.res_acquire, t)
+	if t.mods.resource != nil {
+		release_res(t.mods.resource, t)
 	}
 
-	if t.backpressure_acquire != nil {
-		release_bp(t.backpressure_acquire)
+	if t.mods.backpressure != nil {
+		release_bp(t.mods.backpressure)
 	}
 
 	if t.is_blocking {
 		worker.is_blocking = false
 	}
-	if t.backpressure_acquire != nil {
-		switch acquire_bp(t.backpressure_acquire) {
+	if t.mods.backpressure != nil {
+		switch acquire_bp(t.mods.backpressure) {
 		case .Run:
 		// continue
 		case .Drop:
@@ -307,10 +307,12 @@ make_task :: proc(
 			arg = data,
 			is_blocking = is_blocking,
 			id = tid,
-			execute_at = execute_at,
-			res_acquire = res,
-			backpressure_acquire = bp,
-			cyclic_barrier = cb,
+			mods = Task_Modifiers {
+				execute_at = execute_at,
+				resource = res,
+				backpressure = bp,
+				cyclic_barrier = cb,
+			},
 		},
 	)
 

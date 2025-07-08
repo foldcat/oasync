@@ -47,20 +47,24 @@ Task_Id :: bit_field i64 {
 Task :: struct {
 	// void * generic
 	// sometimes i wish for a more complex type system
-	effect:               proc(input: rawptr),
-	arg:                  rawptr,
-	is_blocking:          bool,
-	is_done:              bool,
-	id:                   Task_Id,
+	effect:      proc(input: rawptr),
+	arg:         rawptr,
+	is_blocking: bool,
+	is_done:     bool,
+	id:          Task_Id,
+	mods:        Task_Modifiers,
+}
 
+// modifiers of the tasks
+Task_Modifiers :: struct {
 	// if a task is scheduled to run later or not
 	// this is NOT garenteed to execute at the exact tick
-	execute_at:           time.Tick,
+	execute_at:     time.Tick,
 
 	// concurrency primitives
-	res_acquire:          ^Resource,
-	backpressure_acquire: ^Backpressure,
-	cyclic_barrier:       ^Cyclic_Barrier,
+	resource:       ^Resource,
+	backpressure:   ^Backpressure,
+	cyclic_barrier: ^Cyclic_Barrier,
 }
 
 /*
