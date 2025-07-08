@@ -15,13 +15,17 @@ debug_trace_print: bool
 
 trace :: proc(args: ..any) {
 	when ODIN_DEBUG {
-		if debug_trace_print {
-			now := time.now()
-			date_buf: [time.MIN_YYYY_DATE_LEN]u8
-			date_str := time.to_string_yyyy_mm_dd(now, date_buf[:])
-			time_buf: [time.MIN_HMS_LEN]u8
-			time_str := time.to_string_hms(now, time_buf[:])
-			fmt.printfln("[%s %s]> %s", date_str, time_str, args)
-		}
+		_trace(args)
+	}
+}
+
+_trace :: proc(args: ..any) {
+	if debug_trace_print {
+		now := time.now()
+		date_buf: [time.MIN_YYYY_DATE_LEN]u8
+		date_str := time.to_string_yyyy_mm_dd(now, date_buf[:])
+		time_buf: [time.MIN_HMS_LEN]u8
+		time_str := time.to_string_hms(now, time_buf[:])
+		fmt.printfln("[%s %s]> %s", date_str, time_str, args)
 	}
 }
