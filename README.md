@@ -74,6 +74,9 @@ core :: proc(_: rawptr) {
 
 #### running new tasks
 It is quite simple to spawn new tasks.
+
+Note that the order of task spawning is not garenteed 
+to be the same as the order of `oa.go` calls.
 ```odin
 foo :: proc(_: rawptr) {
 	fmt.println("hi")
