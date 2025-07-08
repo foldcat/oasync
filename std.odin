@@ -28,6 +28,7 @@ free_resource :: proc(r: ^Resource) {
 	free(r)
 }
 
+@(private)
 acquire_res :: proc(r: ^Resource, t: ^Task) -> bool {
 	_, ok := sync.atomic_compare_exchange_strong_explicit(
 		&r.owner,
@@ -39,6 +40,7 @@ acquire_res :: proc(r: ^Resource, t: ^Task) -> bool {
 	return ok
 }
 
+@(private)
 release_res :: proc(r: ^Resource, t: ^Task) -> bool {
 	_, ok := sync.atomic_compare_exchange_strong_explicit(
 		&r.owner,
@@ -73,6 +75,7 @@ BP_Mode :: enum {
 }
 
 // what to do after acquiring backpressure
+@(private)
 BP_Return :: enum {
 	// drop the task, do not run it
 	Drop,
@@ -112,6 +115,7 @@ destroy_bp :: proc(bp: ^Backpressure) {
 
 // task should be push back into the local queue should 
 // this procedure return false
+@(private)
 acquire_bp :: proc(bp: ^Backpressure) -> BP_Return {
 	if bp.is_closed {
 		return .Drop
@@ -137,6 +141,7 @@ acquire_bp :: proc(bp: ^Backpressure) -> BP_Return {
 	panic("unreachable")
 }
 
+@(private)
 release_bp :: proc(bp: ^Backpressure) {
 	sync.atomic_sub(&bp.current_runcount, 1)
 	if bp.is_closed == true {
@@ -178,6 +183,7 @@ destroy_cb :: proc(cb: ^Cyclic_Barrier) {
 	delete(cb.set^)
 }
 
+@(private)
 acquire_cb :: proc(cb: ^Cyclic_Barrier, t: ^Task) -> bool {
 	// can't acquire resource 
 	// try again
