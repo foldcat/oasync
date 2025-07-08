@@ -1,8 +1,6 @@
 package oasync
 
 import "core:container/queue"
-import "core:fmt"
-import "core:slice"
 import "core:sync"
 
 // a mutex acquired by a task
