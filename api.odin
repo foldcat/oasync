@@ -108,15 +108,15 @@ use_main_thread: when true, this procedure will be blocking, instead of
 yielding immediately to grant control back to the thread executing 
 this procedure
 
-init_fn: the first function to execute when oasync is initialized
+init_proc: the first procedure to execute when oasync is initialized
 
 debug_trace_print: whether to print debug info or not, works 
 only when -debug flag is passed into the compiler
 */
 init_oa :: proc(
 	coord: ^Coordinator,
-	init_fn: proc(_: rawptr),
-	init_fn_arg: rawptr = nil,
+	init_proc: proc(_: rawptr),
+	init_proc_arg: rawptr = nil,
 	max_workers := 0,
 	max_blocking := 1,
 	use_main_thread := true,
@@ -135,8 +135,8 @@ init_oa :: proc(
 	}
 
 	init_task := make_task(
-		init_fn,
-		init_fn_arg,
+		init_proc,
+		init_proc_arg,
 		is_parentless = true,
 		is_blocking = false,
 		execute_at = time.Tick{},

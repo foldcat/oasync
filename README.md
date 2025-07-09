@@ -46,9 +46,9 @@ main :: proc() {
         // coordinator
         &coord,
         // what procedure to dispatch when oasync starts
-        init_fn = core,
-        // a rawptr that will be passed into the init_fn
-        init_fn_arg = nil,
+        init_proc = core,
+        // a rawptr that will be passed into the init_proc
+        init_proc_arg = nil,
         // amount of worker threads oasync will run
         // omit this field or set to 0 for oasync to use 
         // os.processor_core_count() as its value
@@ -151,7 +151,7 @@ task :: proc(_: rawptr) {
 main :: proc() {
 	coord: oa.Coordinator
 	// some arguments has default options, see api docs
-	oa.init_oa(&coord, init_fn = core, use_main_thread = false)
+	oa.init_oa(&coord, init_proc = core, use_main_thread = false)
 	oa.go(&coord, task, coord = &coord)
 	// hog the main thread to prevent exiting immediately
 	time.sleep(1 * time.Second)
