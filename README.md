@@ -5,35 +5,32 @@
 M:N multithreading for Odin. The end goal is to implement virtual threads that 
 automatically and quickly parallelize tasks across several os threads.
 
+Note that this library is in a **PRE ALPHA STATE**. Bugs, breaking changes 
+and missing features are expected. Please submit an issue if you catch 
+any bugs or want to suggest new features!
+
+Also note that oasync is NOT compatable with `core:sync`. Please use 
+the synchronization primitives provided by oasync instead.
+
 Now back in active development!
 
 ## features
-- dispatch tasks throughout a thread pool with load balancing
+- quickly and automatically parallelize tasks across a thread pool
 - supports blocking task pool and scheduling tasks to run in the future
 - depends on ONLY the Odin compiler (just like any Odin libraries)
-- 100% api docs coverage + walkthough (see below)
+- 100% API documentation coverage
 - simple and easy to use API
-- codebase kept small and commented for those who want to know how oasync works internally
+- small and commented codebase
 
 ## walkthrough
-Note that this library is in a **PRE ALPHA STATE**. It lacks essential features,
-may cause segmented fault, contains breaking changes, and probably has house major bugs.
-
-However, please test it out and provide feedbacks and bug reports! Do not hesitate 
-if you want to suggest new features, make an issue right here!
-
-Note that oasync is NOT compatable with `core:sync` and any blocking codebase, including 
-and not limited to channels (an oasync native implementation of channels is available). 
-Native implementation/alternative of many constructs are planned.
+It is **HEAVILY** recommend to execute `odin doc .` in the 
+root directory of oasync to read the API documentation. The following 
+walkthough does not cover every procedure and their options.
 
 In the examples below, we will be importing oasync as so: 
 ```odin 
 import oa "../oasync"
 ```
-
-Besides the walkthough, I **HEAVILY** recommend doing `odin doc .` in the 
-root directory of oasync to read the API documentation. The following 
-walkthough does not cover every procedure and their options.
 
 ### core functionalities
 #### initializing oasync runtime
@@ -43,10 +40,10 @@ will all be executed with the following configuration.
 main :: proc() {
     // create a coordinator struct for oasync to store 
     // its internal state
-    // should NOT be modified by anything but oasync
+    // it should NOT be modified by the user
     coord: oa.Coordinator
     oa.init_oa(
-        // pass in the coordinator
+        // coordinator
         &coord,
         // what procedure to dispatch when oasync starts
         init_fn = core,
@@ -89,8 +86,7 @@ core :: proc(_: rawptr) {
 ```
 
 #### passing in arugments
-It is trival to pass arguments into tasks. The lack of typesafety 
-is due to the simplicity of the Odin language.
+It is trival to pass arguments into tasks.
 ```odin
 foo :: proc(a: rawptr) {
 	arg := cast(^string)a
@@ -106,9 +102,9 @@ core :: proc(_: rawptr) {
 
 #### blocking tasks
 Sometimes you may want to run blocking tasks that takes a 
-long time to finish, this should be avoided because it hogs 
-our scheduler and leaving one of our threads out of commission.
-This is why we should spawn blocking tasks in this situation.
+long time to complete, this should be avoided as it hogs 
+the scheduler and leaves one of our threads out of commission.
+One should use `blocking` in this situation.
 ```odin
 blocking :: proc(_: rawptr) {
 	time.sleep(1 * time.Second)
@@ -123,12 +119,11 @@ core :: proc(_: rawptr) {
 }
 ```
 We only allow `max_blocking` amount of blocking task to run 
-at the same time, ensuring there are always room for non blocking 
-tasks to run.
+simultaneously, allowing non-blocking tasks to execute under load.
 
 #### timed schedule
 It is possible to delay the execution of a task without needing
-`time.sleep()`, which hogs our scheduler. 
+`time.sleep()`, as `time.sleep()` hogs the scheduler.
 ```odin
 stuff :: proc(a: rawptr) {
 	fmt.println("done!", (cast(^int)a)^)
@@ -143,11 +138,10 @@ core :: proc(_: rawptr) {
 }
 ```
 Note that timed tasks will execute *during* or *after* the tick you supplied, 
-i.e. tasks are not garenteed to execute at percisely the tick passed into it.
-
+i.e. tasks are not garenteed to execute at percisely after 5 seconds.
 
 #### unsafe dispatching
-You might want to spawn virtual tasks outside of threads managed 
+You might want to spawn tasks outside of threads managed 
 by oasync, we call this unsafe dispatching:
 ```odin
 task :: proc(_: rawptr) {
@@ -171,7 +165,7 @@ avoided.
 
 #### shutdown
 Shutting down oasync can be done by executing the following 
-in a virtual task.
+in a task.
 ```odin
 oa.oa_shutdown()
 ```
@@ -210,12 +204,12 @@ stuff :: proc(_: rawptr) {
 ### synchronization primitives
 We provide oasync native synchronization primitives. These primitives 
 will not hog the scheduler unlike `core:sync`. Some primitives are 
-provided by `../oasync` and others are provided by `../oasync/sync`
+provided by `../oasync` while others are provided by `../oasync/sync`
 ```odin
 import oas "../oasync/sync"
 ```
 
-Each destructor procedure may have unexpected behaviors, it 
+Each destructor procedure have special behaviors, thus it 
 is recommended to seek API documentations.
 
 Note that you should NEVER use the primitives after calling the
@@ -224,7 +218,7 @@ destructor procedures, since it may cause segmented fault.
 #### resources 
 Resources are equivalent to mutexes, where only one task is allowed to access 
 each resource, and said resource will be released upon task completion
-automatically. This will not hog the scheduler.
+automatically.
 
 `free_resouce()` may be used to delete it.
 ```odin
@@ -259,19 +253,16 @@ second release
 ```
 
 The order of acquire might be different, but it should be impossible for 
-another task to acquire the same resource while a it is acquired.
-
-Resource is allocated on the heap, call `free_resouce()` in order to 
-destroy it.
+another task to acquire the same resource while it is acquired.
 
 #### backpressure
 Backpressure allows us to rate limit task spawns.
 
-There are two strategies for backpressure: Lossy and Loseless.
+There are two strategies for backpressure:
 - Lossy: task will be ran in presence of backpressure
 - Loseless: task will not execute until backpressure is alleviated.
 
-Use `oa.destroy_bp` to free it.
+Use `oa.destroy_bp()` to free it.
 
 ```odin
 foo :: proc(a: rawptr) {
@@ -329,8 +320,7 @@ done!
 #### channels
 We offer many to one channels.
 
-Note that this is not typesafe due to how `rawptr` is used for 
-polymorphism. It is also known that the order of elements placed 
+It is known that the order of elements placed 
 into the channel may not be sequencially consistant.
 ```odin
 consumer :: proc(a: rawptr) {
