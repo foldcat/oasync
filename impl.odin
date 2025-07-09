@@ -113,7 +113,7 @@ measure_and_run :: proc(t: ^Task, worker: ^Worker) -> bool {
 		end_time := time.tick_now()
 		diff := time.tick_diff(start_time, end_time)
 		exec_duration := time.duration_milliseconds(diff)
-		if exec_duration > 40 && !t.is_blocking {
+		if exec_duration > 40 && !t.mods.is_blocking {
 			log.warn(
 				"oasync debug runtime detected a task executing with duration longer than 40ms,",
 				"your CPU is likely starving,",
@@ -325,6 +325,23 @@ worker_runloop :: proc(t: ^thread.Thread) {
 	trace("runloop stopped for worker id", worker.id)
 }
 
+setup_worker :: proc(
+	worker: ^Worker,
+	coord: ^Coordinator,
+	id: u8,
+	thread: ^thread.Thread,
+	barrier: ^sync.Barrier,
+	is_main: bool,
+) {
+	worker.id = id
+	worker.localq = Local_Queue(^Task){}
+	worker.rng_seed = rand.int31()
+	worker.thread_obj = thread
+	worker.barrier_ref = barrier
+	worker.coordinator = coord
+	worker.hogs_main_thread = is_main
+}
+
 setup_thread :: proc(worker: ^Worker) -> ^thread.Thread {
 	trace("setting up thread for", worker.id)
 
@@ -351,21 +368,26 @@ setup_thread :: proc(worker: ^Worker) -> ^thread.Thread {
 }
 
 _init :: proc(coord: ^Coordinator, cfg: Config, init_task: ^Task) {
-	trace("starting worker system")
+	log.info("starting worker system")
+
+	// setup coordinator
 	coord.worker_count = cfg.worker_count
 	coord.max_blocking_count = cfg.blocking_worker_count
 	coord.is_running = true
 	debug_trace_print = cfg.debug_trace_print
 
+	// make workers
 	workers := make([]Worker, int(cfg.worker_count))
 	coord.workers = workers
 
+	// for generating unique id for each worker
 	id_gen: u8
 
+	// barrier
 	barrier := sync.Barrier{}
-	log.info("starting worker system with", cfg.worker_count, "workers")
 	sync.barrier_init(&barrier, int(cfg.worker_count))
 
+	// global queue
 	coord.globalq = make_gqueue(^Task)
 
 	required_worker_count := coord.worker_count
@@ -376,40 +398,42 @@ _init :: proc(coord: ^Coordinator, cfg: Config, init_task: ^Task) {
 	for i in 0 ..< required_worker_count {
 		worker := &coord.workers[i]
 
-		worker.id = id_gen
+		thrd := setup_thread(worker)
+		setup_worker(
+			worker = worker,
+			coord = coord,
+			id = id_gen,
+			thread = thrd,
+			barrier = &barrier,
+			is_main = false,
+		)
+
 		id_gen += 1
 
-		// load in the barrier
-		worker.barrier_ref = &barrier
-		worker.coordinator = coord
-
-		thrd := setup_thread(worker)
 		thread.start(thrd)
 	}
 
-	trace("sending first task")
 	gqueue_push(&coord.globalq, init_task)
 
 	// theats the main thread as a worker too
 	if cfg.use_main_thread == true {
 		main_worker := &coord.workers[required_worker_count]
-		main_worker.barrier_ref = &barrier
-		main_worker.coordinator = coord
-		main_worker.hogs_main_thread = true
-		main_worker.rng_seed = rand.int31()
-
-		main_worker.localq = Local_Queue(^Task){}
+		setup_worker(
+			worker = main_worker,
+			coord = coord,
+			id = id_gen,
+			thread = nil,
+			barrier = &barrier,
+			is_main = true,
+		)
 
 		trace("the id of the main worker is", id_gen)
-		main_worker.id = id_gen
 
 		ref_carrier := new_clone(Ref_Carrier{worker = main_worker, user_ptr = nil})
 		context.user_ptr = ref_carrier
 
-		shim_ptr: ^thread.Thread // not gonna use it
+		trace(coord.worker_count)
 
-		coord.worker_count += 1
-
-		worker_runloop(shim_ptr)
+		worker_runloop(nil)
 	}
 }

@@ -30,7 +30,9 @@ Worker :: struct {
 	is_blocking:      bool,
 	is_stealing:      bool,
 	hogs_main_thread: bool,
+	// for lcg
 	rng_seed:         i32,
+	// for generating unique id for each task
 	task_id_gen:      u32,
 }
 
