@@ -215,6 +215,8 @@ is recommended to seek API documentations.
 Note that you should NEVER use the primitives after calling the
 destructor procedures, since it may cause segmented fault.
 
+The following examples uses `time.sleep()` 
+
 #### resources 
 Resources are equivalent to mutexes, where only one task is allowed to access 
 each resource, and said resource will be released upon task completion
@@ -238,7 +240,6 @@ core :: proc(_: rawptr) {
 	fmt.println("started")
 
 	res := oa.make_resource()
-	// in real world, use the blocking pool
 	oa.go(acquire1, acq = res)
 	oa.go(acquire2, acq = res)
 }
@@ -266,8 +267,6 @@ Use `oa.destroy_bp()` to free it.
 
 ```odin
 foo :: proc(a: rawptr) {
-    // reminder to never time.sleep outside of a 
-    // blocking pool
     time.sleep(3 * time.Second)
     fmt.println((cast(^int)a)^)
     free(a)
@@ -361,3 +360,26 @@ core :: proc(_: rawptr) {
 ```
 
 In order to shutdown the channel, `c_stop()` may be used. 
+
+#### task chaining 
+It is possible to make a sequencial task chain acquire one or 
+more primitives, releasing only after every single task completes.
+
+```odin
+stuff :: proc(a: rawptr) -> rawptr {
+	time.sleep(1 * time.second)
+	fmt.println("chained resource acquiring task done")
+	return nil
+}
+
+stuff2 :: proc(a: rawptr) {
+	fmt.println("single resource acquiring task done")
+}
+
+core :: proc(_: rawptr) {
+	fmt.println("started")
+	res := oa.make_resource()
+	oa.go(stuff, stuff, stuff, res = res)
+	oa.go(stuff2, res = res)
+}
+```

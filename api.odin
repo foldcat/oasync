@@ -15,7 +15,7 @@ comes with heavy performance drawback
 res: resource to acquire
 bp: backpressure to acquire
 */
-go :: proc(
+singleton_go :: proc(
 	p: proc(_: rawptr),
 	data: rawptr = nil,
 	block: bool = false,
@@ -60,6 +60,59 @@ go :: proc(
 	}
 }
 
+/* 
+dispatch a task chain
+option are same as `go`
+*/
+chain_go :: proc(
+	p: ..proc(_: rawptr) -> rawptr,
+	data: rawptr = nil,
+	block: bool = false,
+	coord: ^Coordinator = nil,
+	delay: time.Duration = 0,
+	res: ^Resource = nil,
+	bp: ^Backpressure = nil,
+	cdl: ^Count_Down_Latch = nil,
+	cb: ^Cyclic_Barrier = nil,
+) {
+	execute_at: time.Tick
+	if delay != 0 {
+		execute_at = time.tick_add(time.tick_now(), delay)
+	}
+
+	if coord == nil {
+		task := make_task(
+			new_clone(p),
+			data,
+			is_blocking = block,
+			execute_at = execute_at,
+			res = res,
+			bp = bp,
+			cdl = cdl,
+			cb = cb,
+			is_parentless = false,
+		)
+		spawn_task(task)
+	} else {
+		task := make_task(
+			new_clone(p),
+			data,
+			is_blocking = block,
+			execute_at = execute_at,
+			is_parentless = true,
+			res = res,
+			cdl = cdl,
+			cb = cb,
+			bp = bp,
+		)
+		spawn_unsafe_task(task, coord)
+	}
+}
+
+go :: proc {
+	singleton_go,
+	chain_go,
+}
 
 /*
 get worker from context

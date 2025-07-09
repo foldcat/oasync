@@ -46,15 +46,35 @@ Task_Id :: bit_field i64 {
 	task_id:       u32  | 32,
 }
 
+Effect_Input :: union {
+	proc(_: rawptr),
+	^[]proc(_: rawptr) -> rawptr,
+}
+
 Singleton_Effect :: struct {
 	effect:  proc(input: rawptr),
 	is_done: bool,
 }
 
+Returning_Effect :: struct {
+	effect:  proc(input: rawptr) -> rawptr,
+	is_done: bool,
+}
+
+Chain_Effect :: struct {
+	effects: []Returning_Effect,
+	idx:     int,
+}
+
+Effect :: union {
+	Singleton_Effect,
+	Chain_Effect,
+}
+
 Task :: struct {
 	// void * generic
 	// sometimes i wish for a more complex type system
-	effect: Singleton_Effect,
+	effect: Effect,
 	arg:    rawptr,
 	id:     Task_Id,
 	mods:   Task_Modifiers,

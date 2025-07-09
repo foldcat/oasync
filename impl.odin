@@ -85,37 +85,32 @@ get_task_run_status :: proc(t: ^Task, worker: ^Worker) -> Task_Run_Status {
 	return .Run
 }
 
-// in debug mode, measure the runtime of the task 
-// and execute it
-// otherwise only execute it 
-// also exchanges the is_done status
-// false is returned when we fail
-measure_and_run :: proc(t: ^Task, worker: ^Worker) -> bool {
+trace_execution :: proc(t: ^Task, worker: ^Worker) {
+	trace(
+		get_worker_id(),
+		"executed task",
+		t.id,
+		"now queue has",
+		queue_len(&worker.localq),
+		"items",
+	)
+}
+
+Effect_Union :: union {
+	proc(_: rawptr),
+	proc(_: rawptr) -> rawptr,
+}
+
+wrap_measure :: proc(e: Effect_Union, supply: rawptr, t: ^Task) -> (ret: rawptr) {
 	when ODIN_DEBUG {
 		start_time := time.tick_now()
 	}
-
-	if _, ok := sync.atomic_compare_exchange_strong_explicit(
-		&t.effect.is_done,
-		false,
-		true,
-		.Consume,
-		.Relaxed,
-	); ok {
-		t.effect.effect(t.arg)
-		trace(
-			get_worker_id(),
-			"executed task",
-			t.id,
-			"now queue has",
-			queue_len(&worker.localq),
-			"items",
-		)
-	} else {
-		// trace("WARNING: ATTEMPTING TO RE-EXECUTE TASKS THAT ARE DONE")
-		return false
+	switch v in e {
+	case proc(_: rawptr):
+		v(supply)
+	case proc(_: rawptr) -> rawptr:
+		ret = v(supply)
 	}
-
 	when ODIN_DEBUG {
 		end_time := time.tick_now()
 		diff := time.tick_diff(start_time, end_time)
@@ -129,8 +124,54 @@ measure_and_run :: proc(t: ^Task, worker: ^Worker) -> bool {
 			)
 		}
 	}
+	return
+}
 
-	return true
+// execute effect
+run_effect :: proc(t: ^Task, worker: ^Worker) -> Task_Run_Status {
+	switch &v in t.effect {
+	case Singleton_Effect:
+		if _, ok := sync.atomic_compare_exchange_strong_explicit(
+			&v.is_done,
+			false,
+			true,
+			.Consume,
+			.Relaxed,
+		); ok {
+			wrap_measure(v.effect, t.arg, t)
+			trace_execution(t, worker)
+		} else {
+			trace("WARNING: ATTEMPTING TO RE-EXECUTE TASKS THAT ARE DONE")
+			return .Drop
+		}
+	case Chain_Effect:
+		ef := &v.effects[v.idx]
+		ret: rawptr
+
+		if _, ok := sync.atomic_compare_exchange_strong_explicit(
+			&ef.is_done,
+			false,
+			true,
+			.Consume,
+			.Relaxed,
+		); ok {
+			t.arg = wrap_measure(ef.effect, t.arg, t)
+			trace_execution(t, worker)
+		} else {
+			trace("WARNING: ATTEMPTING TO RE-EXECUTE TASKS THAT ARE DONE")
+			return .Drop
+		}
+
+		// update the effect chain
+		if v.idx < len(v.effects) - 1 {
+			v.idx += 1
+			return .Requeue
+		} else {
+			return .Drop
+		}
+	}
+
+	return .Run
 }
 
 release_primitives :: proc(t: ^Task, worker: ^Worker) {
@@ -154,21 +195,37 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 
 	worker.current_running = t
 
-	switch get_task_run_status(t, worker) {
+	_, is_singleton := t.effect.(Singleton_Effect)
+
+	// should not cause casting error due to short circuiting
+	if is_singleton || t.effect.(Chain_Effect).idx == 0 {
+		switch get_task_run_status(t, worker) {
+		case .Run:
+		case .Requeue:
+			spawn_task(t)
+			return
+		case .Drop:
+			return
+		}
+	}
+
+	switch run_effect(t, worker) {
 	case .Run:
 	case .Requeue:
 		spawn_task(t)
 		return
 	case .Drop:
+		// only chain effect would demand dropping
+		se := &t.effect.(Chain_Effect)
+		release_primitives(t, worker)
+		delete(se.effects)
+		free(t)
 		return
 	}
 
-	if !measure_and_run(t, worker) {
-		// fail to run
-		return
+	if is_singleton {
+		release_primitives(t, worker)
 	}
-
-	release_primitives(t, worker)
 
 	free(t)
 }
@@ -188,8 +245,19 @@ _shutdown :: proc() {
 	gqueue_delete(&worker.coordinator.globalq)
 }
 
+make_effect_chain :: proc(s: ^[]proc(_: rawptr) -> rawptr) -> Chain_Effect {
+	re := make([]Returning_Effect, len(s))
+	for effect, idx in s {
+		re[idx] = Returning_Effect {
+			effect  = effect,
+			is_done = false,
+		}
+	}
+	return Chain_Effect{effects = re, idx = 0}
+}
+
 make_task :: proc(
-	p: proc(_: rawptr),
+	p: Effect_Input,
 	data: rawptr,
 	is_blocking: bool,
 	execute_at: time.Tick,
@@ -209,9 +277,20 @@ make_task :: proc(
 		worker.task_id_gen += 1
 	}
 
+	ef: Effect
+	switch v in p {
+	case proc(_: rawptr):
+		ef = Singleton_Effect {
+			effect = v,
+		}
+	case ^[]proc(_: rawptr) -> rawptr:
+		ef = make_effect_chain(v)
+		free(v)
+	}
+
 	tsk := new_clone(
 		Task {
-			effect = Singleton_Effect{effect = p, is_done = false},
+			effect = ef,
 			arg = data,
 			id = tid,
 			mods = Task_Modifiers {
