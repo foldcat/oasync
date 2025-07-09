@@ -7,9 +7,7 @@ Now officially in beta state!
 M:N multithreading for Odin. The end goal is to implement virtual threads that 
 automatically and quickly parallelize tasks across several os threads.
 
-Note that although oasync is no longer in the pre alpha state, bugs 
-are still expected. Please report them by opening an issue. Please 
-also suggest additional features by making issues
+Feel free to report bugs and request features by creating issues!
 
 Also note that oasync is NOT compatable with `core:sync`. Please use 
 the synchronization primitives provided by oasync instead.
