@@ -62,22 +62,17 @@ compute_blocking_count :: proc(workers: []Worker) -> int {
 
 EMPTY_TICK :: time.Tick{}
 
-run_task :: proc(t: ^Task, worker: ^Worker) {
-	// if it is running a task, it isn't stealing
-	worker.is_stealing = false
-
-	worker.current_running = t
-
+// should a task be run? should it be dropped? should 
+// we requeue it?
+get_task_run_status :: proc(t: ^Task, worker: ^Worker) -> Task_Run_Status {
 	// resources fail to acquire
 	if t.mods.resource != nil && !acquire_res(t.mods.resource, t) {
-		spawn_task(t)
-		return
+		return .Requeue
 	}
 
 	// cyclic barrier fail to acquire
 	if t.mods.cyclic_barrier != nil && !acquire_cb(t.mods.cyclic_barrier, t) {
-		spawn_task(t)
-		return
+		return .Requeue
 	}
 
 	if t.mods.backpressure != nil {
@@ -85,10 +80,9 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 		case .Run:
 		// continue
 		case .Drop:
-			return
+			return .Drop
 		case .Requeue:
-			spawn_task(t)
-			return
+			return .Requeue
 		}
 	}
 
@@ -97,8 +91,7 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 
 	if t.mods.is_blocking {
 		if current_count >= worker.coordinator.max_blocking_count {
-			spawn_task(t)
-			return
+			return .Requeue
 		}
 		worker.is_blocking = true
 	}
@@ -110,9 +103,26 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 			// it is in future
 			// we are not executing tasks that is supposed to be 
 			// ran in future
-			spawn_task(t)
-			return
+			return .Requeue
 		}
+	}
+
+	return .Run
+}
+
+run_task :: proc(t: ^Task, worker: ^Worker) {
+	// if it is running a task, it isn't stealing
+	worker.is_stealing = false
+
+	worker.current_running = t
+
+	switch get_task_run_status(t, worker) {
+	case .Run:
+	case .Requeue:
+		spawn_task(t)
+		return
+	case .Drop:
+		return
 	}
 
 	when ODIN_DEBUG {
@@ -165,17 +175,6 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 
 	if t.mods.is_blocking {
 		worker.is_blocking = false
-	}
-	if t.mods.backpressure != nil {
-		switch acquire_bp(t.mods.backpressure) {
-		case .Run:
-		// continue
-		case .Drop:
-			return
-		case .Requeue:
-			spawn_task(t)
-			return
-		}
 	}
 
 	free(t)

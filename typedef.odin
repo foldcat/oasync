@@ -54,6 +54,7 @@ Task :: struct {
 	mods:    Task_Modifiers,
 }
 
+@(private)
 Task_Run_Status :: enum {
 	// drop the task, do not run it
 	Drop,

@@ -72,17 +72,6 @@ BP_Mode :: enum {
 	Lossy,
 }
 
-// what to do after acquiring backpressure
-@(private)
-BP_Return :: enum {
-	// drop the task, do not run it
-	Drop,
-	// run the task
-	Run,
-	// put the task back into a queue
-	Requeue,
-}
-
 /*
 make a backpressure, seek documentation on the 
 Backpressure struct for more info
@@ -114,7 +103,7 @@ destroy_bp :: proc(bp: ^Backpressure) {
 // task should be push back into the local queue should 
 // this procedure return false
 @(private)
-acquire_bp :: proc(bp: ^Backpressure) -> BP_Return {
+acquire_bp :: proc(bp: ^Backpressure) -> Task_Run_Status {
 	if bp.is_closed {
 		return .Drop
 	}
