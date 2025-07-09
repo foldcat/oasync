@@ -46,14 +46,18 @@ Task_Id :: bit_field i64 {
 	task_id:       u32  | 32,
 }
 
+Singleton_Effect :: struct {
+	effect:  proc(input: rawptr),
+	is_done: bool,
+}
+
 Task :: struct {
 	// void * generic
 	// sometimes i wish for a more complex type system
-	effect:  proc(input: rawptr),
-	arg:     rawptr,
-	is_done: bool,
-	id:      Task_Id,
-	mods:    Task_Modifiers,
+	effect: Singleton_Effect,
+	arg:    rawptr,
+	id:     Task_Id,
+	mods:   Task_Modifiers,
 }
 
 @(private)

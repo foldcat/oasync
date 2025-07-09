@@ -96,13 +96,13 @@ measure_and_run :: proc(t: ^Task, worker: ^Worker) -> bool {
 	}
 
 	if _, ok := sync.atomic_compare_exchange_strong_explicit(
-		&t.is_done,
+		&t.effect.is_done,
 		false,
 		true,
 		.Consume,
 		.Relaxed,
 	); ok {
-		t.effect(t.arg)
+		t.effect.effect(t.arg)
 		trace(
 			get_worker_id(),
 			"executed task",
@@ -211,7 +211,7 @@ make_task :: proc(
 
 	tsk := new_clone(
 		Task {
-			effect = p,
+			effect = Singleton_Effect{effect = p, is_done = false},
 			arg = data,
 			id = tid,
 			mods = Task_Modifiers {
