@@ -110,21 +110,12 @@ get_task_run_status :: proc(t: ^Task, worker: ^Worker) -> Task_Run_Status {
 	return .Run
 }
 
-run_task :: proc(t: ^Task, worker: ^Worker) {
-	// if it is running a task, it isn't stealing
-	worker.is_stealing = false
-
-	worker.current_running = t
-
-	switch get_task_run_status(t, worker) {
-	case .Run:
-	case .Requeue:
-		spawn_task(t)
-		return
-	case .Drop:
-		return
-	}
-
+// in debug mode, measure the runtime of the task 
+// and execute it
+// otherwise only execute it 
+// also exchanges the is_done status
+// false is returned when we fail
+measure_and_run :: proc(t: ^Task, worker: ^Worker) -> bool {
 	when ODIN_DEBUG {
 		start_time := time.tick_now()
 	}
@@ -147,7 +138,7 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 		)
 	} else {
 		// trace("WARNING: ATTEMPTING TO RE-EXECUTE TASKS THAT ARE DONE")
-		return
+		return false
 	}
 
 	when ODIN_DEBUG {
@@ -162,9 +153,12 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 				"without using blocking dispatch",
 			)
 		}
-
 	}
 
+	return true
+}
+
+release_primitives :: proc(t: ^Task, worker: ^Worker) {
 	if t.mods.resource != nil {
 		release_res(t.mods.resource, t)
 	}
@@ -176,6 +170,30 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 	if t.mods.is_blocking {
 		worker.is_blocking = false
 	}
+
+}
+
+run_task :: proc(t: ^Task, worker: ^Worker) {
+	// if it is running a task, it isn't stealing
+	worker.is_stealing = false
+
+	worker.current_running = t
+
+	switch get_task_run_status(t, worker) {
+	case .Run:
+	case .Requeue:
+		spawn_task(t)
+		return
+	case .Drop:
+		return
+	}
+
+	if !measure_and_run(t, worker) {
+		// fail to run
+		return
+	}
+
+	release_primitives(t, worker)
 
 	free(t)
 }
