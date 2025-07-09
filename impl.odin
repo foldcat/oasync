@@ -32,16 +32,23 @@ compute_steal_count :: proc(current_worker: ^Worker) -> (count: int) {
 // should a task be run? should it be dropped? should 
 // we requeue it?
 get_task_run_status :: proc(t: ^Task, worker: ^Worker) -> Task_Run_Status {
-	// resources fail to acquire
+	// resources
 	if t.mods.resource != nil && !acquire_res(t.mods.resource, t) {
 		return .Requeue
 	}
 
-	// cyclic barrier fail to acquire
+	// cyclic barrier
 	if t.mods.cyclic_barrier != nil && !acquire_cb(t.mods.cyclic_barrier, t) {
+		trace("requeue")
 		return .Requeue
 	}
 
+	// count down latch
+	if t.mods.count_down_latch != nil && !acquire_cdl(t.mods.count_down_latch, t) {
+		return .Requeue
+	}
+
+	// backpressure
 	if t.mods.backpressure != nil {
 		switch acquire_bp(t.mods.backpressure) {
 		case .Run:
@@ -53,9 +60,8 @@ get_task_run_status :: proc(t: ^Task, worker: ^Worker) -> Task_Run_Status {
 		}
 	}
 
+	// blocking
 	current_count := compute_blocking_count(worker.coordinator.workers)
-	// trace(get_worker_id(), "current_count is", current_count)
-
 	if t.mods.is_blocking {
 		if current_count >= worker.coordinator.max_blocking_count {
 			return .Requeue
@@ -63,6 +69,7 @@ get_task_run_status :: proc(t: ^Task, worker: ^Worker) -> Task_Run_Status {
 		worker.is_blocking = true
 	}
 
+	// timed
 	EMPTY_TICK :: time.Tick{}
 	if t.mods.execute_at != EMPTY_TICK {
 		now := time.tick_now()
@@ -184,12 +191,13 @@ _shutdown :: proc() {
 make_task :: proc(
 	p: proc(_: rawptr),
 	data: rawptr,
-	is_blocking := false,
-	execute_at := time.Tick{},
-	is_parentless := false,
-	res: ^Resource = nil,
-	bp: ^Backpressure = nil,
-	cb: ^Cyclic_Barrier = nil,
+	is_blocking: bool,
+	execute_at: time.Tick,
+	is_parentless: bool,
+	res: ^Resource,
+	bp: ^Backpressure,
+	cdl: ^Count_Down_Latch,
+	cb: ^Cyclic_Barrier,
 ) -> ^Task {
 	tid: Task_Id
 
@@ -212,6 +220,7 @@ make_task :: proc(
 				resource = res,
 				backpressure = bp,
 				cyclic_barrier = cb,
+				count_down_latch = cdl,
 			},
 		},
 	)

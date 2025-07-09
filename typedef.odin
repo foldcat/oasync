@@ -68,15 +68,16 @@ Task_Run_Status :: enum {
 
 // modifiers of the tasks
 Task_Modifiers :: struct {
-	is_blocking:    bool,
+	is_blocking:      bool,
 	// if a task is scheduled to run later or not
 	// this is NOT garenteed to execute at the exact tick
-	execute_at:     time.Tick,
+	execute_at:       time.Tick,
 
 	// concurrency primitives
-	resource:       ^Resource,
-	backpressure:   ^Backpressure,
-	cyclic_barrier: ^Cyclic_Barrier,
+	resource:         ^Resource,
+	backpressure:     ^Backpressure,
+	cyclic_barrier:   ^Cyclic_Barrier,
+	count_down_latch: ^Count_Down_Latch,
 }
 
 /*

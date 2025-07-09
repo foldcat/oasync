@@ -138,6 +138,35 @@ release_bp :: proc(bp: ^Backpressure) {
 	}
 }
 
+/* 
+one shot concurrency primitive that blocks any tasks
+waiting on it until `goal` tasks are waiting
+
+further acquires are no-op
+*/
+Count_Down_Latch :: struct {
+	goal:           int,
+	awaiting_tasks: map[Task_Id]bool,
+}
+
+make_cdl :: proc(goal: int) -> ^Count_Down_Latch {
+	return new_clone(Count_Down_Latch{goal = goal, awaiting_tasks = make(map[Task_Id]bool)})
+}
+
+acquire_cdl :: proc(cdl: ^Count_Down_Latch, t: ^Task) -> bool {
+	if len(cdl.awaiting_tasks) >= cdl.goal {
+		return true
+	}
+	// anything will work as long as it exists
+	cdl.awaiting_tasks[t.id] = false
+	return false
+}
+
+delete_cdl :: proc(cdl: ^Count_Down_Latch) {
+	delete(cdl.awaiting_tasks)
+	free(cdl)
+}
+
 /*
 allows a set of tasks to wait unti the amount of waiting 
 tasks reaches a goal

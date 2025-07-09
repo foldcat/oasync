@@ -23,6 +23,7 @@ go :: proc(
 	delay: time.Duration = 0,
 	res: ^Resource = nil,
 	bp: ^Backpressure = nil,
+	cdl: ^Count_Down_Latch = nil,
 	cb: ^Cyclic_Barrier = nil,
 ) {
 	execute_at: time.Tick
@@ -38,7 +39,9 @@ go :: proc(
 			execute_at = execute_at,
 			res = res,
 			bp = bp,
+			cdl = cdl,
 			cb = cb,
+			is_parentless = false,
 		)
 		spawn_task(task)
 	} else {
@@ -49,7 +52,9 @@ go :: proc(
 			execute_at = execute_at,
 			is_parentless = true,
 			res = res,
+			cdl = cdl,
 			cb = cb,
+			bp = bp,
 		)
 		spawn_unsafe_task(task, coord)
 	}
@@ -129,7 +134,17 @@ init_oa :: proc(
 		debug_trace_print     = debug_trace_print,
 	}
 
-	init_task := make_task(init_fn, init_fn_arg, is_parentless = true)
+	init_task := make_task(
+		init_fn,
+		init_fn_arg,
+		is_parentless = true,
+		is_blocking = false,
+		execute_at = time.Tick{},
+		res = nil,
+		bp = nil,
+		cdl = nil,
+		cb = nil,
+	)
 
 	_init(coord, cfg, init_task)
 }
