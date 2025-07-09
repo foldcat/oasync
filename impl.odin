@@ -7,47 +7,6 @@ import "core:sync"
 import "core:thread"
 import "core:time"
 
-// fast random number generator via linear congruential 
-// algorithm
-// seed is pulled from worker, thus only works 
-// inside workers
-// by default the seed is generated via a rand.int31()
-// and then acted on by the lcg
-lcg :: proc(worker: ^Worker, max: int) -> i32 {
-	m :: 25253
-	a :: 148251
-	c :: 10007
-
-	worker.rng_seed = (a * worker.rng_seed + c) % m
-
-	return abs(worker.rng_seed) % i32(max)
-}
-
-steal :: proc(this: ^Worker) -> (tsk: ^Task, ok: bool) {
-	num := len(this.coordinator.workers)
-
-	// choose the worker to start searching at
-	start := int(lcg(this, num))
-
-	// limit the times so this doesn't hog forever
-	for i in 0 ..< num {
-		ix := (start + i) % num
-		// this must be a pointer
-		worker := &this.coordinator.workers[ix]
-		if worker.id == this.id {
-			// same id, and don't steal from self,
-			continue
-		}
-
-		task, steal_ok := queue_steal(&worker.localq)
-		if steal_ok {
-			// trace(get_worker_id(), "stole", task.id, "from", worker.id, "where the queue is", worker.localq)
-			return task, true
-		}
-	}
-	return
-}
-
 compute_blocking_count :: proc(workers: []Worker) -> int {
 	// trace("worker count", len(workers))
 	count := 0
@@ -60,7 +19,15 @@ compute_blocking_count :: proc(workers: []Worker) -> int {
 	return count
 }
 
-EMPTY_TICK :: time.Tick{}
+
+compute_steal_count :: proc(current_worker: ^Worker) -> (count: int) {
+	for worker in current_worker.coordinator.workers {
+		if worker.is_stealing {
+			count += 1
+		}
+	}
+	return
+}
 
 // should a task be run? should it be dropped? should 
 // we requeue it?
@@ -96,6 +63,7 @@ get_task_run_status :: proc(t: ^Task, worker: ^Worker) -> Task_Run_Status {
 		worker.is_blocking = true
 	}
 
+	EMPTY_TICK :: time.Tick{}
 	if t.mods.execute_at != EMPTY_TICK {
 		now := time.tick_now()
 		diff := time.tick_diff(t.mods.execute_at, now)
@@ -198,104 +166,19 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 	free(t)
 }
 
-calc_steal_couunt :: proc(current_worker: ^Worker) -> (count: int) {
-	for worker in current_worker.coordinator.workers {
-		if worker.is_stealing {
-			count += 1
+_shutdown :: proc() {
+	worker := get_worker()
+	worker.coordinator.is_running = false
+	for worker in worker.coordinator.workers {
+		if !worker.hogs_main_thread {
+			trace("shutting down", worker.id)
+			thread.terminate(worker.thread_obj, 0)
 		}
 	}
-	return
-}
-
-// event loop that every worker runs
-worker_runloop :: proc(t: ^thread.Thread) {
-	worker := get_worker()
-
-	trace("awaiting barrier started")
-	sync.barrier_wait(worker.barrier_ref)
-
-	trace("runloop started for worker id", worker.id)
-	for {
-		if !worker.coordinator.is_running {
-			// termination
-			return
-		}
-
-		// tasks in local queue gets scheduled first
-		tsk, exist := queue_pop(&worker.localq)
-		if exist {
-			// trace(get_worker_id(), "pulled task", tsk.id, "from local queue, running")
-			run_task(tsk, worker)
-			continue
-		}
-
-		// local queue seems to be empty at this point, take a look 
-		// at the global channel
-		//trace("chan recv")
-		tsk, exist = gqueue_pop(&worker.coordinator.globalq)
-		if exist {
-			// trace(get_worker_id(), "pulled task", tsk.id, "from global queue, running")
-			run_task(tsk, worker)
-
-			continue
-		}
-
-		scount := calc_steal_couunt(worker)
-		// global queue seems to be empty too, enter stealing mode 
-
-		// throttle stealing to half the total thread count
-		if scount < (worker.coordinator.worker_count / 2) {
-			worker.is_stealing = true
-		}
-
-		// only steal when allowed
-		if worker.is_stealing {
-			stolen_task, succ := steal(worker) // start stealing
-			if succ {
-				run_task(stolen_task, worker)
-			}
-		}
-
-	}
-	trace("runloop stopped for worker id", worker.id)
-}
-
-
-// takes a worker context from the context
-spawn_task :: proc(task: ^Task) {
-	worker := get_worker()
-
-	queue_push_or_overflow(&worker.localq, task, &worker.coordinator.globalq)
-}
-
-
-spawn_unsafe_task :: proc(task: ^Task, coord: ^Coordinator) {
-	gqueue_push(&coord.globalq, task)
-}
-
-setup_thread :: proc(worker: ^Worker) -> ^thread.Thread {
-	trace("setting up thread for", worker.id)
-
-	trace("init queue")
-	worker.localq = Local_Queue(^Task){}
-	worker.rng_seed = rand.int31()
-
-	// weird name to avoid collision
-	thrd := thread.create(worker_runloop) // make a worker thread
-
-
-	ctx := context
-
-	ref_carrier := new_clone(Ref_Carrier{worker = worker, user_ptr = nil})
-	ctx.user_ptr = ref_carrier
-
-	thrd.init_context = ctx
-
-	worker.thread_obj = thrd
-
-	trace("built thread")
-	return thrd
-
+	trace("deleting workers")
+	delete(worker.coordinator.workers)
+	trace("deleting global queue")
+	gqueue_delete(&worker.coordinator.globalq)
 }
 
 make_task :: proc(
@@ -336,19 +219,135 @@ make_task :: proc(
 	return tsk
 }
 
-_shutdown :: proc() {
+// takes a worker context from the context
+spawn_task :: proc(task: ^Task) {
 	worker := get_worker()
-	worker.coordinator.is_running = false
-	for worker in worker.coordinator.workers {
-		if !worker.hogs_main_thread {
-			trace("shutting down", worker.id)
-			thread.terminate(worker.thread_obj, 0)
+
+	queue_push_or_overflow(&worker.localq, task, &worker.coordinator.globalq)
+}
+
+
+spawn_unsafe_task :: proc(task: ^Task, coord: ^Coordinator) {
+	gqueue_push(&coord.globalq, task)
+}
+
+// fast random number generator via linear congruential 
+// algorithm
+// seed is pulled from worker, thus only works 
+// inside workers
+// by default the seed is generated via a rand.int31()
+// and then acted on by the lcg
+lcg :: proc(worker: ^Worker, max: int) -> i32 {
+	m :: 25253
+	a :: 148251
+	c :: 10007
+
+	worker.rng_seed = (a * worker.rng_seed + c) % m
+
+	return abs(worker.rng_seed) % i32(max)
+}
+
+steal :: proc(this: ^Worker) -> (tsk: ^Task, ok: bool) {
+	num := len(this.coordinator.workers)
+
+	// choose the worker to start searching at
+	start := int(lcg(this, num))
+
+	// limit the times so this doesn't hog forever
+	for i in 0 ..< num {
+		ix := (start + i) % num
+		// this must be a pointer
+		worker := &this.coordinator.workers[ix]
+		if worker.id == this.id {
+			// same id, and don't steal from self,
+			continue
+		}
+
+		task, steal_ok := queue_steal(&worker.localq)
+		if steal_ok {
+			// trace(get_worker_id(), "stole", task.id, "from", worker.id, "where the queue is", worker.localq)
+			return task, true
 		}
 	}
-	trace("deleting workers")
-	delete(worker.coordinator.workers)
-	trace("deleting global queue")
-	gqueue_delete(&worker.coordinator.globalq)
+	return
+}
+
+// event loop that every worker runs
+worker_runloop :: proc(t: ^thread.Thread) {
+	worker := get_worker()
+
+	trace("awaiting barrier started")
+	sync.barrier_wait(worker.barrier_ref)
+
+	trace("runloop started for worker id", worker.id)
+	for {
+		if !worker.coordinator.is_running {
+			// termination
+			return
+		}
+
+		// tasks in local queue gets scheduled first
+		tsk, exist := queue_pop(&worker.localq)
+		if exist {
+			// trace(get_worker_id(), "pulled task", tsk.id, "from local queue, running")
+			run_task(tsk, worker)
+			continue
+		}
+
+		// local queue seems to be empty at this point, take a look 
+		// at the global channel
+		//trace("chan recv")
+		tsk, exist = gqueue_pop(&worker.coordinator.globalq)
+		if exist {
+			// trace(get_worker_id(), "pulled task", tsk.id, "from global queue, running")
+			run_task(tsk, worker)
+
+			continue
+		}
+
+		scount := compute_steal_count(worker)
+		// global queue seems to be empty too, enter stealing mode 
+
+		// throttle stealing to half the total thread count
+		if scount < (worker.coordinator.worker_count / 2) {
+			worker.is_stealing = true
+		}
+
+		// only steal when allowed
+		if worker.is_stealing {
+			stolen_task, succ := steal(worker) // start stealing
+			if succ {
+				run_task(stolen_task, worker)
+			}
+		}
+
+	}
+	trace("runloop stopped for worker id", worker.id)
+}
+
+setup_thread :: proc(worker: ^Worker) -> ^thread.Thread {
+	trace("setting up thread for", worker.id)
+
+	trace("init queue")
+	worker.localq = Local_Queue(^Task){}
+	worker.rng_seed = rand.int31()
+
+	// weird name to avoid collision
+	thrd := thread.create(worker_runloop) // make a worker thread
+
+
+	ctx := context
+
+	ref_carrier := new_clone(Ref_Carrier{worker = worker, user_ptr = nil})
+	ctx.user_ptr = ref_carrier
+
+	thrd.init_context = ctx
+
+	worker.thread_obj = thrd
+
+	trace("built thread")
+	return thrd
+
 }
 
 _init :: proc(coord: ^Coordinator, cfg: Config, init_task: ^Task) {
