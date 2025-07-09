@@ -291,19 +291,19 @@ Use `delete_cdl()` to free it.
 
 ```odin
 stuff :: proc(a: rawptr) {
-	fmt.println("done!")
+  fmt.println("done!")
 }
 
 core :: proc(_: rawptr) {
-	fmt.println("started")
-	cdl := oa.make_cdl(2)
+  fmt.println("started")
+  cdl := oa.make_cdl(2)
 
-	oa.go(stuff, cdl = cdl)
-	time.sleep(4 * time.Second)
-	oa.go(stuff, cdl = cdl)
-	time.sleep(6 * time.Second)
-    // further acquires are allowed to execute immediately
-	oa.go(stuff, cdl = cdl)
+  oa.go(stuff, cdl = cdl)
+  time.sleep(4 * time.Second)
+  oa.go(stuff, cdl = cdl)
+  time.sleep(6 * time.Second)
+  // further acquires are allowed to execute immediately
+  oa.go(stuff, cdl = cdl)
 }
 ```
 
