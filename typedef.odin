@@ -47,16 +47,25 @@ Task_Id :: bit_field i64 {
 Task :: struct {
 	// void * generic
 	// sometimes i wish for a more complex type system
-	effect:      proc(input: rawptr),
-	arg:         rawptr,
-	is_blocking: bool,
-	is_done:     bool,
-	id:          Task_Id,
-	mods:        Task_Modifiers,
+	effect:  proc(input: rawptr),
+	arg:     rawptr,
+	is_done: bool,
+	id:      Task_Id,
+	mods:    Task_Modifiers,
+}
+
+Task_Run_Status :: enum {
+	// drop the task, do not run it
+	Drop,
+	// run the task
+	Run,
+	// put the task back into a queue
+	Requeue,
 }
 
 // modifiers of the tasks
 Task_Modifiers :: struct {
+	is_blocking:    bool,
 	// if a task is scheduled to run later or not
 	// this is NOT garenteed to execute at the exact tick
 	execute_at:     time.Tick,

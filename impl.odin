@@ -95,7 +95,7 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 	current_count := compute_blocking_count(worker.coordinator.workers)
 	// trace(get_worker_id(), "current_count is", current_count)
 
-	if t.is_blocking {
+	if t.mods.is_blocking {
 		if current_count >= worker.coordinator.max_blocking_count {
 			spawn_task(t)
 			return
@@ -163,7 +163,7 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 		release_bp(t.mods.backpressure)
 	}
 
-	if t.is_blocking {
+	if t.mods.is_blocking {
 		worker.is_blocking = false
 	}
 	if t.mods.backpressure != nil {
@@ -305,9 +305,9 @@ make_task :: proc(
 		Task {
 			effect = p,
 			arg = data,
-			is_blocking = is_blocking,
 			id = tid,
 			mods = Task_Modifiers {
+				is_blocking = is_blocking,
 				execute_at = execute_at,
 				resource = res,
 				backpressure = bp,
