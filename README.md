@@ -1,4 +1,4 @@
-<img width="500" height="100" alt="NewCanvas2_scaled_20x_pngcrushed" src="https://github.com/user-attachments/assets/ad70e311-a391-4190-969c-b4a0bd3e6f72" />
+<img width="580" height="180" alt="NewCanvas2(1)_scaled_20x_pngcrushed" src="https://github.com/user-attachments/assets/0b8fffce-545d-44b3-a62e-a01498cd35d2" />
 
 ---
 
