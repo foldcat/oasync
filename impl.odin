@@ -1,8 +1,10 @@
 #+private
 package oasync
 
+import "base:runtime"
 import "core:log"
 import "core:math/rand"
+import vmem "core:mem/virtual"
 import "core:sync"
 import "core:thread"
 import "core:time"
@@ -139,7 +141,7 @@ run_effect :: proc(t: ^Task, worker: ^Worker) -> Task_Run_Status {
 			.Relaxed,
 		); ok {
 			wrap_measure(v.effect, t.arg, t)
-			trace_execution(t, worker)
+			// trace_execution(t, worker)
 		} else {
 			trace("WARNING: ATTEMPTING TO RE-EXECUTE TASKS THAT ARE DONE")
 			return .Drop
@@ -156,7 +158,7 @@ run_effect :: proc(t: ^Task, worker: ^Worker) -> Task_Run_Status {
 			.Relaxed,
 		); ok {
 			t.arg = wrap_measure(ef.effect, t.arg, t)
-			trace_execution(t, worker)
+			// trace_execution(t, worker)
 		} else {
 			trace("WARNING: ATTEMPTING TO RE-EXECUTE TASKS THAT ARE DONE")
 			return .Drop
@@ -230,19 +232,23 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 	free(t)
 }
 
-_shutdown :: proc() {
+_shutdown :: proc(graceful := true) {
 	worker := get_worker()
 	worker.coordinator.is_running = false
 	for worker in worker.coordinator.workers {
-		if !worker.hogs_main_thread {
+		if !worker.hogs_main_thread && graceful != true {
 			trace("shutting down", worker.id)
 			thread.terminate(worker.thread_obj, 0)
+			thread.destroy(worker.thread_obj)
 		}
 	}
 	trace("deleting workers")
-	delete(worker.coordinator.workers)
+	delete(worker.coordinator.workers, worker.coordinator.allocator)
 	trace("deleting global queue")
 	gqueue_delete(&worker.coordinator.globalq)
+	trace("destroying arena")
+	vmem.arena_destroy(&worker.coordinator.arena)
+	trace("destroyed arena")
 }
 
 make_effect_chain :: proc(s: ^[]proc(_: rawptr) -> rawptr) -> Chain_Effect {
@@ -363,13 +369,19 @@ steal :: proc(this: ^Worker) -> (tsk: ^Task, ok: bool) {
 // event loop that every worker runs
 worker_runloop :: proc(t: ^thread.Thread) {
 	worker := get_worker()
+	// during shutdown, worker is freed 
+	// thus segmented fault will be caused by 
+	// accessing worker.coordinator.is_running
+	// for this reason the coordinator pointer 
+	// should be stored on the stack
+	coord := worker.coordinator
 
 	trace("awaiting barrier started")
 	sync.barrier_wait(worker.barrier_ref)
 
 	trace("runloop started for worker id", worker.id)
 	for {
-		if !worker.coordinator.is_running {
+		if !coord.is_running {
 			// termination
 			return
 		}
@@ -430,7 +442,7 @@ setup_worker :: proc(
 	worker.hogs_main_thread = is_main
 }
 
-setup_thread :: proc(worker: ^Worker) -> ^thread.Thread {
+setup_thread :: proc(worker: ^Worker, alloc: runtime.Allocator) -> ^thread.Thread {
 	trace("setting up thread for", worker.id)
 
 	trace("init queue")
@@ -440,10 +452,11 @@ setup_thread :: proc(worker: ^Worker) -> ^thread.Thread {
 	// weird name to avoid collision
 	thrd := thread.create(worker_runloop) // make a worker thread
 
+	thrd.creation_allocator = alloc
 
 	ctx := context
 
-	ref_carrier := new_clone(Ref_Carrier{worker = worker, user_ptr = nil})
+	ref_carrier := new_clone(Ref_Carrier{worker = worker, user_ptr = nil}, allocator = alloc)
 	ctx.user_ptr = ref_carrier
 
 	thrd.init_context = ctx
@@ -458,6 +471,9 @@ setup_thread :: proc(worker: ^Worker) -> ^thread.Thread {
 _init :: proc(coord: ^Coordinator, cfg: Config, init_task: ^Task) {
 	log.info("starting worker system")
 
+	// setup arena
+	coord.allocator = vmem.arena_allocator(&coord.arena)
+
 	// setup coordinator
 	coord.worker_count = cfg.worker_count
 	coord.max_blocking_count = cfg.blocking_worker_count
@@ -465,7 +481,7 @@ _init :: proc(coord: ^Coordinator, cfg: Config, init_task: ^Task) {
 	debug_trace_print = cfg.debug_trace_print
 
 	// make workers
-	workers := make([]Worker, int(cfg.worker_count))
+	workers := make([]Worker, int(cfg.worker_count), allocator = coord.allocator)
 	coord.workers = workers
 
 	// for generating unique id for each worker
@@ -486,7 +502,7 @@ _init :: proc(coord: ^Coordinator, cfg: Config, init_task: ^Task) {
 	for i in 0 ..< required_worker_count {
 		worker := &coord.workers[i]
 
-		thrd := setup_thread(worker)
+		thrd := setup_thread(worker, coord.allocator)
 		setup_worker(
 			worker = worker,
 			coord = coord,
@@ -517,7 +533,10 @@ _init :: proc(coord: ^Coordinator, cfg: Config, init_task: ^Task) {
 
 		trace("the id of the main worker is", id_gen)
 
-		ref_carrier := new_clone(Ref_Carrier{worker = main_worker, user_ptr = nil})
+		ref_carrier := new_clone(
+			Ref_Carrier{worker = main_worker, user_ptr = nil},
+			allocator = coord.allocator,
+		)
 		context.user_ptr = ref_carrier
 
 		trace(coord.worker_count)

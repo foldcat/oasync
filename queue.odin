@@ -177,11 +177,11 @@ gqueue_pop :: proc(q: ^Global_Queue($T)) -> (res: T, ok: bool) {
 gqueue_delete :: proc(q: ^Global_Queue($T)) {
 	sync.mutex_lock(&q.mutex)
 	defer sync.mutex_unlock(&q.mutex)
-	has_item := true
-	for has_item {
+	for {
 		trace("gqueue pop mutexless delete")
-		_, ok := gqueue_pop_mutexless(q)
-		trace(ok)
-		has_item = ok
+		if _, ok := gqueue_pop_mutexless(q); !ok {
+			trace(ok)
+			break
+		}
 	}
 }

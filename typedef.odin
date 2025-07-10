@@ -1,5 +1,7 @@
 package oasync
 
+import "base:runtime"
+import vmem "core:mem/virtual"
 import "core:sync"
 import "core:thread"
 import "core:time"
@@ -15,6 +17,8 @@ Coordinator :: struct {
 	worker_count:       int,
 	globalq:            Global_Queue(^Task),
 	max_blocking_count: int,
+	arena:              vmem.Arena,
+	allocator:          runtime.Allocator,
 }
 
 // assigned to each thread

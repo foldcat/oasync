@@ -165,7 +165,7 @@ avoided.
 Shutting down oasync can be done by executing the following 
 in a task.
 ```odin
-oa.oa_shutdown()
+oa.shutdown()
 ```
 Should `use_main_thread` be true, this will wait for the main 
 thread to terminate instead of calling `thread.terminate`, 

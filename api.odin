@@ -135,7 +135,7 @@ get_worker_id :: proc() -> u8 {
 /*
 shuts down the coordinator
 */
-oa_shutdown :: proc() {
+shutdown :: proc() {
 	_shutdown()
 }
 
