@@ -1,4 +1,7 @@
-<img width="580" height="180" alt="NewCanvas2(1)_scaled_20x_pngcrushed" src="https://github.com/user-attachments/assets/0b8fffce-545d-44b3-a62e-a01498cd35d2" />
+<picture>
+  <source media="(prefers-color-scheme: dark)" width="50%" height="auto" srcset="https://github.com/user-attachments/assets/5f3989b2-c89e-4961-a485-d05915c3829e">
+  <img alt="logo" width="50%" height="auto" src="https://github.com/user-attachments/assets/251c7ad8-25e4-4453-bc4a-bb487205eb4e">
+</picture>
 
 ---
 
