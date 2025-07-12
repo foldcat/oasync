@@ -229,7 +229,7 @@ Note that you should NEVER use the primitives after calling the
 destructor procedures, since it may cause segmented fault.
 
 The following examples uses `time.sleep()` for convenience sake. Please do 
-not use `time.sleep()` for real world usage or execute it in blocking tasks.
+not use `time.sleep()` for real world usage unless it is in a blocking task.
 
 #### resources 
 Resources are equivalent to mutexes, where only one task is allowed to access 
