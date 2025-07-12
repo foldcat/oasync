@@ -502,17 +502,24 @@ setup_thread :: proc(worker: ^Worker) -> ^thread.Thread {
 
 }
 
-_init :: proc(coord: ^Coordinator, cfg: Config, init_task: ^Task) {
+_init :: proc(
+	coord: ^Coordinator,
+	init_task: ^Task,
+	worker_count: int,
+	blocking_worker_count: int,
+	use_main_thread: bool,
+	trace_print: bool,
+) {
 	log.info("starting worker system")
 
 	// setup coordinator
-	coord.worker_count = cfg.worker_count
-	coord.max_blocking_count = cfg.blocking_worker_count
+	coord.worker_count = worker_count
+	coord.max_blocking_count = blocking_worker_count
 	coord.is_running = true
-	debug_trace_print = cfg.debug_trace_print
+	debug_trace_print = trace_print
 
 	// make workers
-	workers := make([]Worker, int(cfg.worker_count))
+	workers := make([]Worker, int(worker_count))
 	coord.workers = workers
 
 	// for generating unique id for each worker
@@ -520,13 +527,13 @@ _init :: proc(coord: ^Coordinator, cfg: Config, init_task: ^Task) {
 
 	// barrier
 	barrier := sync.Barrier{}
-	sync.barrier_init(&barrier, int(cfg.worker_count))
+	sync.barrier_init(&barrier, int(worker_count))
 
 	// global queue
 	coord.globalq = make_gqueue(^Task)
 
 	required_worker_count := coord.worker_count
-	if cfg.use_main_thread {
+	if use_main_thread {
 		required_worker_count -= 1
 	}
 
@@ -551,7 +558,7 @@ _init :: proc(coord: ^Coordinator, cfg: Config, init_task: ^Task) {
 	gqueue_push(&coord.globalq, init_task)
 
 	// theats the main thread as a worker too
-	if cfg.use_main_thread == true {
+	if use_main_thread == true {
 		main_worker := &coord.workers[required_worker_count]
 		setup_worker(
 			worker = main_worker,

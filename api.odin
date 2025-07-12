@@ -180,13 +180,6 @@ init_oa :: proc(
 		max_workers = os.processor_core_count()
 	}
 
-	cfg := Config {
-		worker_count          = max_workers,
-		blocking_worker_count = max_blocking,
-		use_main_thread       = use_main_thread,
-		debug_trace_print     = debug_trace_print,
-	}
-
 	init_task := make_task(
 		init_proc,
 		init_proc_arg,
@@ -198,6 +191,12 @@ init_oa :: proc(
 		cdl = nil,
 		cb = nil,
 	)
-
-	_init(coord, cfg, init_task)
+	_init(
+		coord,
+		init_task,
+		worker_count = max_workers,
+		blocking_worker_count = max_blocking,
+		use_main_thread = use_main_thread,
+		trace_print = debug_trace_print,
+	)
 }

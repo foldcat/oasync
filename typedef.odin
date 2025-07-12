@@ -107,24 +107,6 @@ Task_Modifiers :: struct {
 }
 
 /*
-controls the behavior of a coordinator,
-mutating this upon calling init has no effect 
-on its behavior
-*/
-Config :: struct {
-	// amount of threads to run tasks
-	worker_count:          int,
-	// amount of threads to run blocking tasks
-	blocking_worker_count: int,
-	// use the main thread as a worker 
-	// prevents immediate exit of a program
-	use_main_thread:       bool,
-	// should oasync print debug info
-	// only works with -debug compiler flag enabled
-	debug_trace_print:     bool,
-}
-
-/*
 injected into context.user_ptr, overriding its content
 the user_ptr field can be modified by an user in any way,
 however, the worker field should not be accessed
