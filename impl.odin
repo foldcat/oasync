@@ -236,11 +236,14 @@ _shutdown :: proc(graceful := true) {
 	worker := get_worker()
 	worker.coordinator.is_running = false
 	for worker in worker.coordinator.workers {
-		if !worker.hogs_main_thread && graceful != true {
-			trace("shutting down", worker.id)
-			thread.terminate(worker.thread_obj, 0)
-			thread.destroy(worker.thread_obj)
+		if worker.hogs_main_thread {
+			continue
 		}
+		if graceful != true {
+			thread.terminate(worker.thread_obj, 0)
+		}
+		trace("destroying worker id", worker.id)
+		thread.destroy(worker.thread_obj)
 	}
 	trace("deleting workers")
 	delete(worker.coordinator.workers, worker.coordinator.allocator)
@@ -451,8 +454,6 @@ setup_thread :: proc(worker: ^Worker, alloc: runtime.Allocator) -> ^thread.Threa
 
 	// weird name to avoid collision
 	thrd := thread.create(worker_runloop) // make a worker thread
-
-	thrd.creation_allocator = alloc
 
 	ctx := context
 
