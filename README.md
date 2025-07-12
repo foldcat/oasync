@@ -75,7 +75,7 @@ core :: proc(_: rawptr) {
 #### running new tasks
 It is quite simple to spawn new tasks.
 
-Note that the order of task spawning is not garenteed 
+Note that the order of task spawning is not guaranteed
 to be the same as the order of `oa.go` calls.
 ```odin
 foo :: proc(_: rawptr) {
@@ -88,7 +88,7 @@ core :: proc(_: rawptr) {
 }
 ```
 
-#### passing in arugments
+#### passing in arguments
 It is trival to pass arguments into tasks.
 ```odin
 foo :: proc(a: rawptr) {
@@ -141,7 +141,7 @@ core :: proc(_: rawptr) {
 }
 ```
 Note that timed tasks will execute *during* or *after* the tick you supplied, 
-i.e. tasks are not garenteed to execute at percisely after 5 seconds.
+i.e. tasks are not guaranteed to execute at percisely after 5 seconds.
 
 #### unsafe dispatching
 You might want to spawn tasks outside of threads managed 
