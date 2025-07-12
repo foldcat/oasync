@@ -129,8 +129,17 @@ wrap_measure :: proc(e: Effect_Union, supply: rawptr, t: ^Task) -> (ret: rawptr)
 	return
 }
 
+Execution_Status :: enum {
+	// finish the execution of a task
+	Pass,
+	// return immediately without cleanup
+	Drop,
+	// execute next task in chain 
+	Advance,
+}
+
 // execute effect
-run_effect :: proc(t: ^Task, worker: ^Worker) -> Task_Run_Status {
+run_effect :: proc(t: ^Task, worker: ^Worker) -> Execution_Status {
 	switch &v in t.effect {
 	case Singleton_Effect:
 		if _, ok := sync.atomic_compare_exchange_strong_explicit(
@@ -167,13 +176,12 @@ run_effect :: proc(t: ^Task, worker: ^Worker) -> Task_Run_Status {
 		// update the effect chain
 		if v.idx < len(v.effects) - 1 {
 			v.idx += 1
-			return .Requeue
+			return .Advance
 		} else {
-			return .Drop
+			return .Pass
 		}
 	}
-
-	return .Run
+	return .Pass
 }
 
 release_primitives :: proc(t: ^Task, worker: ^Worker) {
@@ -211,31 +219,58 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 		}
 	}
 
+	// execute the function pointer
 	switch run_effect(t, worker) {
-	case .Run:
-	case .Requeue:
+	case .Pass:
+	// continue
+	case .Advance:
+		// spawn task again so the next task in chain could be executed
+		// do not release primitives
+		trace("advance")
 		spawn_task(t)
 		return
 	case .Drop:
-		// only chain effect would demand dropping
-		se := &t.effect.(Chain_Effect)
+		// do not execute task 
+		// release primitives and drop now
 		release_primitives(t, worker)
-		delete(se.effects)
-		free(t)
 		return
 	}
 
 	if is_singleton {
 		release_primitives(t, worker)
+	} else {
+		se := &t.effect.(Chain_Effect)
+		release_primitives(t, worker)
+		delete(se.effects)
 	}
 
 	free(t)
 }
 
+clean_local_queue :: proc(q: ^Local_Queue(^Task)) {
+	for {
+		item, ok := queue_pop(q)
+		if !ok {
+			// empty
+			return
+		}
+
+		switch v in item.effect {
+		case Singleton_Effect:
+			free(item)
+		case Chain_Effect:
+			delete(v.effects)
+			free(item)
+		}
+	}
+
+}
+
 _shutdown :: proc(graceful := true) {
 	worker := get_worker()
 	worker.coordinator.is_running = false
-	for worker in worker.coordinator.workers {
+	for &worker in worker.coordinator.workers {
+		clean_local_queue(&worker.localq)
 		if worker.hogs_main_thread {
 			continue
 		}
