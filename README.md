@@ -5,7 +5,7 @@
 
 ---
 
-![badge](https://img.shields.io/badge/documentation%20taken%20seriously-ff7eb6)
+![badge](https://img.shields.io/badge/documentation%20taken%20seriously-ff7eb6) ![Static Badge](https://img.shields.io/badge/odin_version-dev--2025--07-blue)
 
 Now officially in beta state!
 
