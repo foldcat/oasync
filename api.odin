@@ -165,6 +165,8 @@ init_proc: the first procedure to execute when oasync is initialized
 
 debug_trace_print: whether to print debug info or not, works 
 only when -debug flag is passed into the compiler
+should multiple coordinators exist at the same time, this option 
+will cause EVERY single coordinator to trace print
 */
 init_oa :: proc(
 	coord: ^Coordinator,
