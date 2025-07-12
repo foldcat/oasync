@@ -40,6 +40,7 @@ Worker :: struct {
 
 // 16 bits wasted but we could work with this
 // is a bit_field as it can be loaded by sync.atomic_load
+@(private)
 Task_Id :: bit_field i64 {
 	// used for unsafe dispatching or the first task dispatched
 	is_empty:      bool | 8,
@@ -48,31 +49,37 @@ Task_Id :: bit_field i64 {
 	task_id:       u32  | 32,
 }
 
+@(private)
 Effect_Input :: union {
 	proc(_: rawptr),
 	^[]proc(_: rawptr) -> rawptr,
 }
 
+@(private)
 Singleton_Effect :: struct {
 	effect:  proc(input: rawptr),
 	is_done: bool,
 }
 
+@(private)
 Returning_Effect :: struct {
 	effect:  proc(input: rawptr) -> rawptr,
 	is_done: bool,
 }
 
+@(private)
 Chain_Effect :: struct {
 	effects: []Returning_Effect,
 	idx:     int,
 }
 
+@(private)
 Effect :: union {
 	Singleton_Effect,
 	Chain_Effect,
 }
 
+@(private)
 Task :: struct {
 	// void * generic
 	// sometimes i wish for a more complex type system
@@ -93,6 +100,7 @@ Task_Run_Status :: enum {
 }
 
 // modifiers of the tasks
+@(private)
 Task_Modifiers :: struct {
 	is_blocking:      bool,
 	// if a task is scheduled to run later or not
