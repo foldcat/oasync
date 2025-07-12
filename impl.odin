@@ -246,12 +246,9 @@ _shutdown :: proc(graceful := true) {
 		thread.destroy(worker.thread_obj)
 	}
 	trace("deleting workers")
-	delete(worker.coordinator.workers, worker.coordinator.allocator)
+	delete(worker.coordinator.workers)
 	trace("deleting global queue")
 	gqueue_delete(&worker.coordinator.globalq)
-	trace("destroying arena")
-	vmem.arena_destroy(&worker.coordinator.arena)
-	trace("destroyed arena")
 }
 
 make_effect_chain :: proc(s: ^[]proc(_: rawptr) -> rawptr) -> Chain_Effect {
@@ -386,6 +383,7 @@ worker_runloop :: proc(t: ^thread.Thread) {
 	for {
 		if !coord.is_running {
 			// termination
+			free(cast(^Ref_Carrier)context.user_ptr)
 			return
 		}
 
@@ -445,7 +443,7 @@ setup_worker :: proc(
 	worker.hogs_main_thread = is_main
 }
 
-setup_thread :: proc(worker: ^Worker, alloc: runtime.Allocator) -> ^thread.Thread {
+setup_thread :: proc(worker: ^Worker) -> ^thread.Thread {
 	trace("setting up thread for", worker.id)
 
 	trace("init queue")
@@ -457,7 +455,7 @@ setup_thread :: proc(worker: ^Worker, alloc: runtime.Allocator) -> ^thread.Threa
 
 	ctx := context
 
-	ref_carrier := new_clone(Ref_Carrier{worker = worker, user_ptr = nil}, allocator = alloc)
+	ref_carrier := new_clone(Ref_Carrier{worker = worker, user_ptr = nil})
 	ctx.user_ptr = ref_carrier
 
 	thrd.init_context = ctx
@@ -472,9 +470,6 @@ setup_thread :: proc(worker: ^Worker, alloc: runtime.Allocator) -> ^thread.Threa
 _init :: proc(coord: ^Coordinator, cfg: Config, init_task: ^Task) {
 	log.info("starting worker system")
 
-	// setup arena
-	coord.allocator = vmem.arena_allocator(&coord.arena)
-
 	// setup coordinator
 	coord.worker_count = cfg.worker_count
 	coord.max_blocking_count = cfg.blocking_worker_count
@@ -482,7 +477,7 @@ _init :: proc(coord: ^Coordinator, cfg: Config, init_task: ^Task) {
 	debug_trace_print = cfg.debug_trace_print
 
 	// make workers
-	workers := make([]Worker, int(cfg.worker_count), allocator = coord.allocator)
+	workers := make([]Worker, int(cfg.worker_count))
 	coord.workers = workers
 
 	// for generating unique id for each worker
@@ -503,7 +498,7 @@ _init :: proc(coord: ^Coordinator, cfg: Config, init_task: ^Task) {
 	for i in 0 ..< required_worker_count {
 		worker := &coord.workers[i]
 
-		thrd := setup_thread(worker, coord.allocator)
+		thrd := setup_thread(worker)
 		setup_worker(
 			worker = worker,
 			coord = coord,
@@ -534,10 +529,7 @@ _init :: proc(coord: ^Coordinator, cfg: Config, init_task: ^Task) {
 
 		trace("the id of the main worker is", id_gen)
 
-		ref_carrier := new_clone(
-			Ref_Carrier{worker = main_worker, user_ptr = nil},
-			allocator = coord.allocator,
-		)
+		ref_carrier := new_clone(Ref_Carrier{worker = main_worker, user_ptr = nil})
 		context.user_ptr = ref_carrier
 
 		trace(coord.worker_count)

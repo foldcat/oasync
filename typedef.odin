@@ -17,8 +17,6 @@ Coordinator :: struct {
 	worker_count:       int,
 	globalq:            Global_Queue(^Task),
 	max_blocking_count: int,
-	arena:              vmem.Arena,
-	allocator:          runtime.Allocator,
 }
 
 // assigned to each thread
