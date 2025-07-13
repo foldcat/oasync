@@ -75,6 +75,7 @@ res_spinlock_release :: proc(r: ^Resource) {
 			`
       cannot release spinlock, this may be due to the release procedure being executed 
       not within the task / task chain that acquired the spinlock
+      or from releasing the same resources twice
       `,
 		)
 	}
