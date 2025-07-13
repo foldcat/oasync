@@ -216,11 +216,7 @@ stuff :: proc(_: rawptr) {
 
 ### synchronization primitives
 We provide oasync native synchronization primitives. These primitives 
-will not hog the scheduler unlike `core:sync`. Some primitives are 
-provided by `../oasync` while others are provided by `../oasync/sync`
-```odin
-import oas "../oasync/sync"
-```
+will not hog the scheduler unlike `core:sync`.
 
 Each destructor procedure have special behaviors, thus it 
 is recommended to seek API documentations.
@@ -388,10 +384,10 @@ consumer :: proc(a: rawptr) {
 }
 
 core :: proc(_: rawptr) {
-	chan := oas.make_chan(consumer)
-	oas.c_put(chan, 1)
-	oas.c_put(chan, 2)
-	oas.c_put(chan, 3)
+	chan := oa.make_chan(consumer)
+	oa.c_put(chan, 1)
+	oa.c_put(chan, 2)
+	oa.c_put(chan, 3)
 }
 ```
 
