@@ -270,6 +270,28 @@ second release
 The order of acquire might be different, but it should be impossible for 
 another task to acquire the same resource while it is acquired.
 
+Note that it is possible to acquire / release a resource in the middle of 
+a resources via a spinlock. This should be avoided, and should also be 
+used in a blocking task.
+
+```odin
+res := oa.make_resource()
+
+stuff :: proc(a: rawptr) {
+	oa.res_spinlock_acquire(res)
+	time.sleep(1 * time.Second)
+	fmt.println("chained resource acquiring task done")
+	oa.res_spinlock_release(res)
+}
+
+
+core :: proc(_: rawptr) {
+	fmt.println("started")
+	oa.go(stuff)
+	oa.go(stuff)
+}
+```
+
 #### backpressure
 Backpressure allows us to rate limit task spawns.
 

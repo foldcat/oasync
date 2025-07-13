@@ -50,6 +50,36 @@ release_res :: proc(r: ^Resource, t: ^Task) -> bool {
 	return ok
 }
 
+/*
+acquires a resource in the middle of a task via a spinlock
+must be released within the same task / task chain
+*/
+res_spinlock_acquire :: proc(r: ^Resource) {
+	worker := get_worker()
+	for {
+		if acquire_res(r, worker.current_running) {
+			return
+		}
+	}
+}
+
+/* 
+releases a spinlocked resource
+panics when not executed within a task chain / task
+that the acquire is in
+*/
+res_spinlock_release :: proc(r: ^Resource) {
+	worker := get_worker()
+	if !release_res(r, worker.current_running) {
+		panic(
+			`
+      cannot release spinlock, this may be due to the release procedure being executed 
+      not within the task / task chain that acquired the spinlock
+      `,
+		)
+	}
+}
+
 
 /*
 backpressure allows you to control how many tasks (max) are run at 
