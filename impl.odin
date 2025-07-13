@@ -1,10 +1,8 @@
 #+private
 package oasync
 
-import "base:runtime"
 import "core:log"
 import "core:math/rand"
-import vmem "core:mem/virtual"
 import "core:sync"
 import "core:thread"
 import "core:time"
@@ -157,7 +155,6 @@ run_effect :: proc(t: ^Task, worker: ^Worker) -> Execution_Status {
 		}
 	case Chain_Effect:
 		ef := &v.effects[v.idx]
-		ret: rawptr
 
 		if _, ok := sync.atomic_compare_exchange_strong_explicit(
 			&ef.is_done,
