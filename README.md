@@ -176,9 +176,9 @@ oa.shutdown(graceful = true)
 
 Shutdown is `graceful` by default, where the scheduler will wait for 
 the current task to complete before destroying the worker. Should 
-`graceful` be false, `thread.terminate()` should execute immediately.
-It is known that non-`graceful` termination may result in memory leak 
-and segmented fault.
+`graceful` be false, `thread.terminate()` will be called on worker 
+threads immediately. It is known that non-`graceful` termination may 
+result in memory leak and segmented fault.
 
 Even with non-`graceful` shutdown, should `use_main_thread` be true,
 the main thread will be terminated gracefully instead of calling 
