@@ -384,7 +384,9 @@ into the channel may not be sequencially consistant.
 ```odin
 consumer :: proc(a: rawptr) {
 	input := (cast(^int)a)^
-	fmt.println(input) }
+	fmt.println(input) 
+}
+
 core :: proc(_: rawptr) {
 	chan := oas.make_chan(consumer)
 	oas.c_put(chan, 1)
