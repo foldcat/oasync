@@ -395,6 +395,23 @@ core :: proc(_: rawptr) {
 }
 ```
 
+It is possible to make buffered sliding channels. Buffered 
+sliding channels may only hold `capacity` amount of data.
+```odin
+consumer :: proc(a: rawptr) {
+	input := (cast(^int)a)^
+	time.sleep(1 * time.Second)
+	fmt.println(input)
+}
+
+core :: proc(_: rawptr) {
+	chan := oa.make_chan(consumer, capacity = 2)
+	for i in 1 ..= 10 {
+		oa.c_put(chan, i)
+	}
+}
+```
+
 In order to shutdown the channel, `c_stop()` may be used. 
 
 #### task chaining 
