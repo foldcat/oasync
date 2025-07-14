@@ -74,6 +74,25 @@ core :: proc(_: rawptr) {
 }
 ```
 
+#### logging 
+We provide additional information should a logger be supplied.
+
+```odin 
+main :: proc() {
+    context.logger = log.create_console_logger()
+    defer log.destroy_console_logger(context.logger)
+
+    // initialize oasync here...
+}
+```
+
+By providing a logger, oasync will log main events. Should `-debug`
+compiler flag be enabled, oasync will also detect worker starvation: 
+A warning will be emitted should a task take more than 40ms 
+to complete. It is recommending to split said task into smaller tasks 
+or use the blocking feature documented below to dispatch in order 
+to prevent hogging the scheduler.
+
 #### running new tasks
 It is quite simple to spawn new tasks.
 
