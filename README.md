@@ -377,7 +377,7 @@ done!
 #### semaphore 
 Semaphore is internally a counter. When a task acquires the 
 semaphore, the counter incremenets. When a task releases the 
-semaphore, the counter increments. Should the counter's value 
+semaphore, the counter decrements. Should the counter's value 
 be `max`, the task attempting to acquire will block until 
 the counter decrements.
 
