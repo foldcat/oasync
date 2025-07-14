@@ -8,10 +8,8 @@ import "core:thread"
 import "core:time"
 
 compute_blocking_count :: proc(workers: []Worker) -> int {
-	// trace("worker count", len(workers))
 	count := 0
 	for &worker in workers {
-		// trace(worker.is_blocking)
 		if worker.is_blocking {
 			count += 1
 		}
@@ -39,7 +37,6 @@ get_task_run_status :: proc(t: ^Task, worker: ^Worker) -> Task_Run_Status {
 
 	// cyclic barrier
 	if t.mods.cyclic_barrier != nil && !acquire_cb(t.mods.cyclic_barrier, t) {
-		trace("requeue")
 		return .Requeue
 	}
 
@@ -153,7 +150,6 @@ run_effect :: proc(t: ^Task, worker: ^Worker) -> Execution_Status {
 			.Relaxed,
 		); ok {
 			wrap_measure(v.effect, t.arg, t)
-			// trace_execution(t, worker)
 		} else {
 			trace("WARNING: ATTEMPTING TO RE-EXECUTE TASKS THAT ARE DONE")
 			return .Drop
@@ -169,7 +165,6 @@ run_effect :: proc(t: ^Task, worker: ^Worker) -> Execution_Status {
 			.Relaxed,
 		); ok {
 			t.arg = wrap_measure(ef.effect, t.arg, t)
-			// trace_execution(t, worker)
 		} else {
 			trace("WARNING: ATTEMPTING TO RE-EXECUTE TASKS THAT ARE DONE")
 			return .Drop
@@ -232,7 +227,6 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 	case .Advance:
 		// spawn task again so the next task in chain could be executed
 		// do not release primitives
-		trace("advance")
 		spawn_task(t)
 		return
 	case .Drop:
@@ -283,12 +277,12 @@ _shutdown :: proc(graceful := true) {
 		if graceful != true {
 			thread.terminate(worker.thread_obj, 0)
 		}
-		trace("destroying worker id", worker.id)
+		log.info("destroying worker id", worker.id)
 		thread.destroy(worker.thread_obj)
 	}
-	trace("deleting workers")
+	log.info("deleting workers")
 	delete(worker.coordinator.workers)
-	trace("deleting global queue")
+	log.info("deleting global queue")
 	gqueue_delete(&worker.coordinator.globalq)
 }
 
@@ -402,7 +396,6 @@ steal :: proc(this: ^Worker) -> (tsk: ^Task, ok: bool) {
 
 		task, steal_ok := queue_steal(&worker.localq)
 		if steal_ok {
-			// trace(get_worker_id(), "stole", task.id, "from", worker.id, "where the queue is", worker.localq)
 			return task, true
 		}
 	}
@@ -419,10 +412,9 @@ worker_runloop :: proc(t: ^thread.Thread) {
 	// should be stored on the stack
 	coord := worker.coordinator
 
-	trace("awaiting barrier started")
 	sync.barrier_wait(worker.barrier_ref)
 
-	trace("runloop started for worker id", worker.id)
+	log.info("runloop started for worker id", worker.id)
 	for {
 		if !coord.is_running {
 			// termination
@@ -433,17 +425,14 @@ worker_runloop :: proc(t: ^thread.Thread) {
 		// tasks in local queue gets scheduled first
 		tsk, exist := queue_pop(&worker.localq)
 		if exist {
-			// trace(get_worker_id(), "pulled task", tsk.id, "from local queue, running")
 			run_task(tsk, worker)
 			continue
 		}
 
 		// local queue seems to be empty at this point, take a look 
 		// at the global channel
-		//trace("chan recv")
 		tsk, exist = gqueue_pop(&worker.coordinator.globalq)
 		if exist {
-			// trace(get_worker_id(), "pulled task", tsk.id, "from global queue, running")
 			run_task(tsk, worker)
 
 			continue
@@ -466,7 +455,7 @@ worker_runloop :: proc(t: ^thread.Thread) {
 		}
 
 	}
-	trace("runloop stopped for worker id", worker.id)
+	log.info("runloop stopped for worker id", worker.id)
 }
 
 setup_worker :: proc(
@@ -487,9 +476,6 @@ setup_worker :: proc(
 }
 
 setup_thread :: proc(worker: ^Worker) -> ^thread.Thread {
-	trace("setting up thread for", worker.id)
-
-	trace("init queue")
 	worker.localq = Local_Queue(^Task){}
 	worker.rng_seed = rand.int31()
 
@@ -505,7 +491,6 @@ setup_thread :: proc(worker: ^Worker) -> ^thread.Thread {
 
 	worker.thread_obj = thrd
 
-	trace("built thread")
 	return thrd
 
 }
@@ -577,12 +562,8 @@ _init :: proc(
 			is_main = true,
 		)
 
-		trace("the id of the main worker is", id_gen)
-
 		ref_carrier := new_clone(Ref_Carrier{worker = main_worker, user_ptr = nil})
 		context.user_ptr = ref_carrier
-
-		trace(coord.worker_count)
 
 		worker_runloop(nil)
 	}

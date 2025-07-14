@@ -164,7 +164,6 @@ gqueue_pop_mutexless :: proc(q: ^Global_Queue($T)) -> (res: T, ok: bool) {
 
 	free(temp)
 	q.size -= 1
-	trace(get_worker_id(), "obtained", data.id)
 	return data, true
 }
 
