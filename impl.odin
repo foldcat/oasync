@@ -1,6 +1,7 @@
 #+private
 package oasync
 
+import "base:runtime"
 import "core:log"
 import "core:math/rand"
 import "core:sync"
@@ -119,7 +120,9 @@ wrap_measure :: proc(e: Effect_Union, supply: rawptr, t: ^Task) -> (ret: rawptr)
 		exec_duration := time.duration_milliseconds(diff)
 		if exec_duration > 40 && !t.mods.is_blocking {
 			log.warn(
-				"oasync debug runtime detected a task executing with duration longer than 40ms,",
+				"oasync debug runtime detected a task at location",
+				t.loc,
+				"executing with duration longer than 40ms,",
 				"your CPU is likely starving,",
 				"this is a sign that you are unintentionally running blocking I/O operations",
 				"without using blocking dispatch",
@@ -308,6 +311,7 @@ make_task :: proc(
 	cdl: ^Count_Down_Latch,
 	cb: ^Cyclic_Barrier,
 	sem: ^Semaphore,
+	loc: runtime.Source_Code_Location,
 ) -> ^Task {
 	tid: Task_Id
 
@@ -335,6 +339,7 @@ make_task :: proc(
 			effect = ef,
 			arg = data,
 			id = tid,
+			loc = loc,
 			mods = Task_Modifiers {
 				is_blocking = is_blocking,
 				execute_at = execute_at,

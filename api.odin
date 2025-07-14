@@ -26,6 +26,7 @@ singleton_go :: proc(
 	cdl: ^Count_Down_Latch = nil,
 	cb: ^Cyclic_Barrier = nil,
 	sem: ^Semaphore = nil,
+	loc := #caller_location,
 ) {
 	execute_at: time.Tick
 	if delay != 0 {
@@ -44,6 +45,7 @@ singleton_go :: proc(
 			cdl = cdl,
 			cb = cb,
 			sem = sem,
+			loc = loc,
 		)
 		spawn_task(task)
 	} else {
@@ -58,6 +60,7 @@ singleton_go :: proc(
 			cb = cb,
 			bp = bp,
 			sem = sem,
+			loc = loc,
 		)
 		spawn_unsafe_task(task, coord)
 	}
@@ -78,6 +81,7 @@ chain_go :: proc(
 	cdl: ^Count_Down_Latch = nil,
 	cb: ^Cyclic_Barrier = nil,
 	sem: ^Semaphore = nil,
+	loc := #caller_location,
 ) {
 	execute_at: time.Tick
 	if delay != 0 {
@@ -96,6 +100,7 @@ chain_go :: proc(
 			cb = cb,
 			sem = sem,
 			is_parentless = false,
+			loc = loc,
 		)
 		spawn_task(task)
 	} else {
@@ -110,6 +115,7 @@ chain_go :: proc(
 			cb = cb,
 			bp = bp,
 			sem = sem,
+			loc = loc,
 		)
 		spawn_unsafe_task(task, coord)
 	}
@@ -179,6 +185,7 @@ init_oa :: proc(
 	max_blocking := 0,
 	use_main_thread := true,
 	debug_trace_print := false,
+	loc := #caller_location,
 ) {
 	max_workers := max_workers // make it mutable
 	max_blocking := max_blocking
@@ -200,6 +207,7 @@ init_oa :: proc(
 		cdl = nil,
 		cb = nil,
 		sem = nil,
+		loc = loc,
 	)
 	_init(
 		coord,

@@ -1,5 +1,6 @@
 package oasync
 
+import "base:runtime"
 import "core:sync"
 import "core:thread"
 import "core:time"
@@ -85,6 +86,8 @@ Task :: struct {
 	arg:    rawptr,
 	id:     Task_Id,
 	mods:   Task_Modifiers,
+	// caller location
+	loc:    runtime.Source_Code_Location,
 }
 
 @(private)
