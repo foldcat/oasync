@@ -32,7 +32,7 @@ acquire_res :: proc(r: ^Resource, t: ^Task) -> bool {
 		&r.owner,
 		Empty_Id,
 		t.id,
-		.Seq_Cst,
+		.Acquire,
 		.Acquire,
 	)
 	return ok
@@ -44,8 +44,8 @@ release_res :: proc(r: ^Resource, t: ^Task) -> bool {
 		&r.owner,
 		t.id,
 		Empty_Id,
-		.Seq_Cst,
-		.Acquire,
+		.Release,
+		.Relaxed,
 	)
 	return ok
 }
