@@ -25,6 +25,7 @@ singleton_go :: proc(
 	bp: ^Backpressure = nil,
 	cdl: ^Count_Down_Latch = nil,
 	cb: ^Cyclic_Barrier = nil,
+	sem: ^Semaphore = nil,
 ) {
 	execute_at: time.Tick
 	if delay != 0 {
@@ -37,11 +38,12 @@ singleton_go :: proc(
 			data,
 			is_blocking = block,
 			execute_at = execute_at,
+			is_parentless = false,
 			res = res,
 			bp = bp,
 			cdl = cdl,
 			cb = cb,
-			is_parentless = false,
+			sem = sem,
 		)
 		spawn_task(task)
 	} else {
@@ -55,6 +57,7 @@ singleton_go :: proc(
 			cdl = cdl,
 			cb = cb,
 			bp = bp,
+			sem = sem,
 		)
 		spawn_unsafe_task(task, coord)
 	}
@@ -74,6 +77,7 @@ chain_go :: proc(
 	bp: ^Backpressure = nil,
 	cdl: ^Count_Down_Latch = nil,
 	cb: ^Cyclic_Barrier = nil,
+	sem: ^Semaphore = nil,
 ) {
 	execute_at: time.Tick
 	if delay != 0 {
@@ -90,6 +94,7 @@ chain_go :: proc(
 			bp = bp,
 			cdl = cdl,
 			cb = cb,
+			sem = sem,
 			is_parentless = false,
 		)
 		spawn_task(task)
@@ -104,6 +109,7 @@ chain_go :: proc(
 			cdl = cdl,
 			cb = cb,
 			bp = bp,
+			sem = sem,
 		)
 		spawn_unsafe_task(task, coord)
 	}
@@ -193,6 +199,7 @@ init_oa :: proc(
 		bp = nil,
 		cdl = nil,
 		cb = nil,
+		sem = nil,
 	)
 	_init(
 		coord,

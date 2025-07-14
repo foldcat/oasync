@@ -48,6 +48,11 @@ get_task_run_status :: proc(t: ^Task, worker: ^Worker) -> Task_Run_Status {
 		return .Requeue
 	}
 
+	// sema
+	if t.mods.semaphore != nil && !acquire_sem(t.mods.semaphore) {
+		return .Requeue
+	}
+
 	// backpressure
 	if t.mods.backpressure != nil {
 		switch acquire_bp(t.mods.backpressure) {
@@ -190,6 +195,10 @@ release_primitives :: proc(t: ^Task, worker: ^Worker) {
 		release_bp(t.mods.backpressure)
 	}
 
+	if t.mods.semaphore != nil {
+		release_sem(t.mods.semaphore)
+	}
+
 	if t.mods.is_blocking {
 		worker.is_blocking = false
 	}
@@ -304,6 +313,7 @@ make_task :: proc(
 	bp: ^Backpressure,
 	cdl: ^Count_Down_Latch,
 	cb: ^Cyclic_Barrier,
+	sem: ^Semaphore,
 ) -> ^Task {
 	tid: Task_Id
 
@@ -338,6 +348,7 @@ make_task :: proc(
 				backpressure = bp,
 				cyclic_barrier = cb,
 				count_down_latch = cdl,
+				semaphore = sem,
 			},
 		},
 	)

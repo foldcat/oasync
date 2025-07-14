@@ -110,6 +110,7 @@ Task_Modifiers :: struct {
 	backpressure:     ^Backpressure,
 	cyclic_barrier:   ^Cyclic_Barrier,
 	count_down_latch: ^Count_Down_Latch,
+	semaphore:        ^Semaphore,
 }
 
 /*

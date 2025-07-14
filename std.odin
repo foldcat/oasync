@@ -272,3 +272,38 @@ acquire_cb :: proc(cb: ^Cyclic_Barrier, t: ^Task) -> bool {
 
 	return false
 }
+
+Semaphore :: struct {
+	max:              int,
+	current_occupied: int,
+}
+
+make_sem :: proc(max: int) -> ^Semaphore {
+	return new_clone(Semaphore{max = max})
+}
+
+acquire_sem :: proc(s: ^Semaphore) -> bool {
+	current_occupied := sync.atomic_load_explicit(&s.current_occupied, .Acquire)
+	if current_occupied >= s.max {
+		return false
+	}
+	if _, ok := sync.atomic_compare_exchange_strong_explicit(
+		&s.current_occupied,
+		current_occupied,
+		current_occupied + 1,
+		.Acquire,
+		.Acquire,
+	); !ok {
+		// just retry, don't need to for loop over this
+		return false
+	}
+	return true
+}
+
+release_sem :: proc(s: ^Semaphore) {
+	sync.atomic_sub_explicit(&s.current_occupied, 1, .Release)
+}
+
+delete_sem :: proc(s: ^Semaphore) {
+	free(s)
+}

@@ -374,6 +374,30 @@ done!
 
 ```
 
+#### semaphore 
+Semaphore is internally a counter. When a task acquires the 
+semaphore, the counter incremenets. When a task releases the 
+semaphore, the counter increments. Should the counter's value 
+be `max`, the task attempting to acquire will block until 
+the counter decrements.
+
+```odin
+acquire :: proc(a: rawptr) {
+	time.sleep(3 * time.Second)
+	fmt.println((cast(^int)a)^)
+}
+
+core :: proc(_: rawptr) {
+	fmt.println("started")
+
+	res := oa.make_sem(3) // max amount of acquire before blocking
+	for i in 1 ..= 10 {
+		a := new_clone(i)
+		oa.go(acquire, a, sem = res)
+	}
+}
+```
+
 #### channels
 We offer many to one channels.
 
