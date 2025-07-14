@@ -278,7 +278,7 @@ res := oa.make_resource()
 stuff :: proc(a: rawptr) {
 	oa.res_spinlock_acquire(res)
 	time.sleep(1 * time.Second)
-	fmt.println("chained resource acquiring task done")
+	fmt.println("acquiring task done")
 	oa.res_spinlock_release(res)
 }
 
