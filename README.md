@@ -395,6 +395,8 @@ core :: proc(_: rawptr) {
 
 It is possible to make buffered sliding channels. Buffered 
 sliding channels may only hold `capacity` amount of data.
+When capacity is full, buffered sliding channels drops the 
+last item to make room for new items.
 ```odin
 consumer :: proc(a: rawptr) {
 	input := (cast(^int)a)^
