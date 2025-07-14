@@ -381,6 +381,8 @@ semaphore, the counter decrements. Should the counter's value
 be `max`, the task attempting to acquire will block until 
 the counter decrements.
 
+Use `oa.delete_sem()` to free it.
+
 ```odin
 acquire :: proc(a: rawptr) {
 	time.sleep(3 * time.Second)
