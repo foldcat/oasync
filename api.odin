@@ -151,11 +151,8 @@ for the scheduler, leave it at 0 to use os.processor_core_count()
 as it's value
 
 max_blocking: the maximum amount of threads 
-to be used for blocking operations, leaving it to 0 disables blocking 
-tasks, note that firing off a blocking task with max_blocking set to 0
-will cause memory leaks and said task will not be executed
-thread used by max_blocking does not countribute towards max_workers, 
-but this behavior will be changed in future updates
+to be used for blocking operations, leaving it to 0 to for oasync 
+to use max_blocking / 2 as value
 
 use_main_thread: when true, this procedure will be blocking, instead of 
 yielding immediately to grant control back to the thread executing 
@@ -173,13 +170,17 @@ init_oa :: proc(
 	init_proc: proc(_: rawptr),
 	init_proc_arg: rawptr = nil,
 	max_workers := 0,
-	max_blocking := 1,
+	max_blocking := 0,
 	use_main_thread := true,
 	debug_trace_print := false,
 ) {
 	max_workers := max_workers // make it mutable
+	max_blocking := max_blocking
 	if max_workers == 0 {
 		max_workers = os.processor_core_count()
+	}
+	if max_blocking == 0 {
+		max_blocking = max_workers / 2
 	}
 
 	init_task := make_task(

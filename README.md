@@ -58,6 +58,8 @@ main :: proc() {
         max_workers = 4,
         // how many blocking taskes should be allowed 
         // to execute at the same time
+        // set as 0 for oasync to use max_workers / 2 
+        // as its value
         max_blocking = 2,
         // whether to use the main thread as a worker or not, 
         // counts toward max_workers
