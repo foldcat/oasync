@@ -252,8 +252,8 @@ core :: proc(_: rawptr) {
 	fmt.println("started")
 
 	res := oa.make_resource()
-	oa.go(acquire1, acq = res)
-	oa.go(acquire2, acq = res)
+	oa.go(acquire1, res = res)
+	oa.go(acquire2, res = res)
 }
 
 /*
