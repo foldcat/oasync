@@ -86,7 +86,7 @@ chan_runloop :: proc(c: rawptr) {
 			static_queue_drain(&v)
 			delete(v.arr)
 		}
-		free_resource(chan.res)
+		destroy_resource(chan.res)
 		free(chan)
 		return
 	}

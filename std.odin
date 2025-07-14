@@ -22,7 +22,7 @@ make_resource :: proc() -> ^Resource {
 	return new_clone(Resource{owner = Empty_Id})
 }
 
-free_resource :: proc(r: ^Resource) {
+destroy_resource :: proc(r: ^Resource) {
 	free(r)
 }
 
@@ -193,7 +193,7 @@ acquire_cdl :: proc(cdl: ^Count_Down_Latch, t: ^Task) -> bool {
 	return false
 }
 
-delete_cdl :: proc(cdl: ^Count_Down_Latch) {
+destroy_cdl :: proc(cdl: ^Count_Down_Latch) {
 	delete(cdl.awaiting_tasks)
 	free(cdl)
 }
@@ -225,7 +225,7 @@ make_cb :: proc(goal: int) -> ^Cyclic_Barrier {
 
 destroy_cb :: proc(cb: ^Cyclic_Barrier) {
 	queue.destroy(&cb.queue)
-	free_resource(cb.mutex)
+	destroy_resource(cb.mutex)
 	delete(cb.release_waitlist^)
 	delete(cb.set^)
 }
@@ -304,6 +304,6 @@ release_sem :: proc(s: ^Semaphore) {
 	sync.atomic_sub_explicit(&s.current_occupied, 1, .Release)
 }
 
-delete_sem :: proc(s: ^Semaphore) {
+destroy_sem :: proc(s: ^Semaphore) {
 	free(s)
 }

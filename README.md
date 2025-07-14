@@ -234,7 +234,7 @@ Resources are equivalent to mutexes, where only one task is allowed to access
 each resource, and said resource will be released upon task completion
 automatically.
 
-`free_resouce()` may be used to delete it.
+`oa.destroy_resouce()` may be used to delete it.
 ```odin
 acquire1 :: proc(_: rawptr) {
 	fmt.println("first acquire")
@@ -320,7 +320,7 @@ core :: proc(_: rawptr) {
 Count down latches are one shot concurrency primitives that 
 blocks any tasks waiting on it until `goal` tasks are waiting.
 
-Use `delete_cdl()` to free it.
+Use `oa.destroy_cdl()` to free it.
 
 ```odin
 stuff :: proc(a: rawptr) {
@@ -381,7 +381,7 @@ semaphore, the counter decrements. Should the counter's value
 be `max`, the task attempting to acquire will block until 
 the counter decrements.
 
-Use `oa.delete_sem()` to free it.
+Use `oa.destroy_sem()` to free it.
 
 ```odin
 acquire :: proc(a: rawptr) {
@@ -438,7 +438,7 @@ core :: proc(_: rawptr) {
 }
 ```
 
-In order to shutdown the channel, `c_stop()` may be used. 
+In order to shutdown the channel, `oa.c_stop()` may be used.
 
 #### task chaining 
 It is possible to make a sequencial task chain acquire one or 
