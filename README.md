@@ -494,5 +494,5 @@ Note that the test uses 4 worker threads and are executed on-site on my
 computer with the CPU `13th Gen Intel(R) Core(TM) i5-13400F (16) @ 4.60 GHz`.
 Tests may fail running on a lower end device.
 
-It is also known that tests may report memory leak. These leaks are likely false 
+It is also known that tests may report memory leaks. These leaks are likely false 
 positives and should be largely ignored.
