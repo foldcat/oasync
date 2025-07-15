@@ -485,3 +485,11 @@ core :: proc(_: rawptr) {
 Note that chained executions require procedures returning a `rawptr`.
 The return of the first procedure passed into `oa.go` will be passed 
 to the next procedure, vice versa.
+
+## testing 
+Testing oasync is as simple as executing `odin test .` in the root 
+directory of the project.
+
+Note that the test uses 4 worker threads and are executed on-site on my 
+computer with the CPU `13th Gen Intel(R) Core(TM) i5-13400F (16) @ 4.60 GHz`.
+Tests may fail running on a lower end device.
