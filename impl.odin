@@ -271,6 +271,11 @@ clean_local_queue :: proc(q: ^Local_Queue(^Task)) {
 
 _shutdown :: proc(graceful := true) {
 	worker := get_worker()
+
+	if worker.coordinator.is_running == false {
+		return
+	}
+
 	worker.coordinator.is_running = false
 	for &worker in worker.coordinator.workers {
 		clean_local_queue(&worker.localq)
