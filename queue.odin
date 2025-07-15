@@ -1,6 +1,7 @@
 #+private
 package oasync
 
+import "core:container/queue"
 import "core:sync"
 
 ARRAY_SIZE :: 256
@@ -108,14 +109,9 @@ queue_len :: proc(q: ^Local_Queue($T)) -> int {
 	return b - t
 }
 
-
-/// global queue is a linked list...
 /// we will need a mutex for this
-
 Global_Queue :: struct($T: typeid) {
-	head:  ^Node(T),
-	last:  ^Node(T),
-	size:  u64,
+	q:     queue.Queue(T),
 	mutex: sync.Mutex,
 }
 
@@ -129,15 +125,7 @@ make_gqueue :: proc($T: typeid) -> Global_Queue(T) {
 }
 
 gqueue_push_mutexless :: proc(q: ^Global_Queue($T), item: T) {
-	new_node := new_clone(Node(T){item = item})
-	if q.last == nil {
-		q.head = new_node
-		q.last = new_node
-	} else {
-		q.last.next = new_node
-		q.last = new_node
-	}
-	q.size += 1
+	queue.push_back(&q.q, item)
 }
 
 gqueue_push :: proc(q: ^Global_Queue($T), item: T) {
@@ -147,24 +135,8 @@ gqueue_push :: proc(q: ^Global_Queue($T), item: T) {
 	gqueue_push_mutexless(q, item)
 }
 
-gqueue_pop_mutexless :: proc(q: ^Global_Queue($T)) -> (res: T, ok: bool) {
-	if q.size == 0 {
-		return
-	}
-	if q.head == nil {
-		return
-	}
-	temp := q.head
-	q.head = temp.next
-	data := temp.item
-
-	if q.head == nil {
-		q.last = nil
-	}
-
-	free(temp)
-	q.size -= 1
-	return data, true
+gqueue_pop_mutexless :: proc(q: ^Global_Queue($T)) -> (T, bool) {
+	return queue.pop_front_safe(&q.q)
 }
 
 gqueue_pop :: proc(q: ^Global_Queue($T)) -> (res: T, ok: bool) {
@@ -174,13 +146,5 @@ gqueue_pop :: proc(q: ^Global_Queue($T)) -> (res: T, ok: bool) {
 }
 
 gqueue_delete :: proc(q: ^Global_Queue($T)) {
-	sync.mutex_lock(&q.mutex)
-	defer sync.mutex_unlock(&q.mutex)
-	for {
-		trace("gqueue pop mutexless delete")
-		if _, ok := gqueue_pop_mutexless(q); !ok {
-			trace(ok)
-			break
-		}
-	}
+	queue.destroy(&q.q)
 }
