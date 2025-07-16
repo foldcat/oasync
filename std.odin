@@ -28,6 +28,10 @@ destroy_resource :: proc(r: ^Resource) {
 
 @(private)
 acquire_res :: proc(r: ^Resource, t: ^Task) -> bool {
+	if sync.atomic_load(&r.owner) == t.id {
+		return true
+	}
+
 	_, ok := sync.atomic_compare_exchange_strong_explicit(
 		&r.owner,
 		Empty_Id,
