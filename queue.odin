@@ -146,5 +146,7 @@ gqueue_pop :: proc(q: ^Global_Queue($T)) -> (res: T, ok: bool) {
 }
 
 gqueue_delete :: proc(q: ^Global_Queue($T)) {
+	sync.mutex_lock(&q.mutex)
 	queue.destroy(&q.q)
+	return gqueue_pop_mutexless(q)
 }
