@@ -3,7 +3,6 @@ package oasync
 // the following tests may reveal memory leaks 
 // the leaking is false positives and should be ignored for most cases
 
-import "core:log"
 import "core:sync"
 import "core:testing"
 import "core:time"
