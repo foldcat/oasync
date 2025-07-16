@@ -560,7 +560,7 @@ _init :: proc(
 
 	gqueue_push(&coord.globalq, init_task)
 
-	// theats the main thread as a worker too
+	// treats the main thread as a worker too
 	if use_main_thread == true {
 		main_worker := &coord.workers[required_worker_count]
 		setup_worker(
