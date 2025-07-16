@@ -9,12 +9,12 @@ import "core:testing"
 import "core:time"
 
 @(private)
-base_coordinator_setup :: proc(core: proc(_: rawptr)) {
+base_coordinator_setup :: proc(core: proc(_: rawptr), arg: ^testing.T = nil) {
 	coord := Coordinator{}
 	init_oa(
 		&coord,
 		init_proc = core,
-		init_proc_arg = nil,
+		init_proc_arg = arg,
 		max_workers = 4,
 		max_blocking = 2,
 		use_main_thread = true,
@@ -113,8 +113,12 @@ test_blocking :: proc(t: ^testing.T) {
 		sync.atomic_add(ctr, 1)
 	}
 
-	core :: proc(_: rawptr) {
+	core :: proc(t: rawptr) {
 		trg := new(int)
+
+		sw := time.Stopwatch{}
+
+		time.stopwatch_start(&sw)
 
 		for _ in 1 ..= 6 {
 			go(increment, trg, block = true)
@@ -122,6 +126,11 @@ test_blocking :: proc(t: ^testing.T) {
 
 		for {
 			if sync.atomic_load(trg) == 6 {
+				time.stopwatch_stop(&sw)
+				dur := time.stopwatch_duration(sw)
+				if dur < 3 * time.Second {
+					testing.fail(cast(^testing.T)t)
+				}
 				shutdown()
 				free(trg)
 				return
@@ -129,7 +138,7 @@ test_blocking :: proc(t: ^testing.T) {
 		}
 	}
 
-	base_coordinator_setup(core)
+	base_coordinator_setup(core, t)
 }
 
 @(test)
