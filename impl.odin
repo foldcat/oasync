@@ -123,8 +123,7 @@ wrap_measure :: proc(e: Effect_Union, supply: rawptr, t: ^Task) -> (ret: rawptr)
 				"oasync debug runtime detected a task at location",
 				t.loc,
 				"executing with duration longer than 40ms,",
-				"your CPU is likely starving,",
-				"this is a sign that you are unintentionally running blocking I/O operations",
+				"this may be sign that you are unintentionally running blocking I/O operations",
 				"without using blocking dispatch",
 			)
 		}
