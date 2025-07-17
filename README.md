@@ -69,8 +69,7 @@ main :: proc() {
 
 // the task to run
 core :: proc(_: rawptr) {
-	fmt.println("test")
-    return
+    fmt.println("test")
 }
 ```
 
