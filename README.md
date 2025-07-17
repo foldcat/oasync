@@ -124,6 +124,10 @@ core :: proc(_: rawptr) {
 }
 ```
 
+Due to items allocated on a stack being freed at the end of the scope,
+it is recommended to allocate the items you want to pass into 
+the next procedure on the heap to prevent accessing freed memories.
+
 #### blocking tasks
 Sometimes you may want to run blocking tasks that takes a 
 long time to complete, this should be avoided as it hogs 
@@ -244,6 +248,10 @@ is recommended to seek API documentations.
 
 Note that you should NEVER use the primitives after calling the
 destructor procedures, since it may cause segmented fault.
+
+Also note that the synchronization primitives are acquired at the moment 
+of task dispatch. Should you spawn a delayed procedure, the aquiring of the 
+primitive begins immediately instead of beginning after the delay ends.
 
 The following examples uses `time.sleep()` for convenience sake. Please do 
 not use `time.sleep()` for real world usage unless it is in a blocking task.
