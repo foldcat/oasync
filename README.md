@@ -70,7 +70,7 @@ main :: proc() {
 // the task to run
 core :: proc(_: rawptr) {
 	fmt.println("test")
-	return oa.B_None{}
+    return
 }
 ```
 
@@ -109,6 +109,24 @@ core :: proc(_: rawptr) {
 }
 ```
 
+In fact, it is far more likely for tasks to execute in reverse
+due a queue algorithm.
+```odin
+foo :: proc(a: rawptr) {
+	fmt.print((cast(^int)a)^, "")
+}
+
+core :: proc(_: rawptr) {
+	fmt.println("started")
+
+	for i in 1 ..= 20 {
+		oa.go(foo, new_clone(i))
+	}
+
+}
+// 20 19 18 17 16...
+```
+
 #### passing in arguments
 It is trival to pass arguments into tasks.
 ```odin
@@ -132,7 +150,7 @@ the next procedure on the heap to prevent accessing freed memories.
 Sometimes you may want to run blocking tasks that takes a 
 long time to complete, this should be avoided as it hogs 
 the scheduler and leaves one of our threads out of commission.
-One should use `blocking` in this situation.
+One should use `block` in this situation.
 ```odin
 blocking :: proc(_: rawptr) {
 	time.sleep(1 * time.Second)
@@ -445,6 +463,8 @@ core :: proc(_: rawptr) {
 	oa.c_put(chan, 3)
 }
 ```
+
+In fact, `oa.c_put` is completely non-blocking and asynchronous.
 
 It is possible to make buffered sliding channels. Buffered 
 sliding channels may only hold `capacity` amount of data.
