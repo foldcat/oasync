@@ -1,7 +1,6 @@
 #+private
 package oasync
 
-import "core:container/queue"
 import "core:sync"
 
 ARRAY_SIZE :: 256
@@ -110,22 +109,79 @@ queue_len :: proc(q: ^Local_Queue($T)) -> int {
 }
 
 /// we will need a mutex for this
-Global_Queue :: struct($T: typeid) {
-	q:     queue.Queue(T),
-	mutex: sync.Mutex,
+
+CHUNK_CAPACITY :: 64
+
+Chunk :: struct(T: typeid) {
+	top_idx:    int,
+	bottom_idx: int,
+	backing:    [CHUNK_CAPACITY]T,
+	next_chunk: ^Chunk(T),
+	prev_chunk: ^Chunk(T),
 }
 
-Node :: struct($T: typeid) {
-	item: T,
-	next: ^Node(T),
+Global_Queue :: struct(T: typeid) {
+	top:    ^Chunk(T),
+	bottom: ^Chunk(T),
+	mutex:  sync.Mutex,
 }
 
 make_gqueue :: proc($T: typeid) -> Global_Queue(T) {
-	return Global_Queue(T){}
+	init_chunk := new(Chunk(T))
+
+	return Global_Queue(T){top = init_chunk, bottom = init_chunk}
 }
 
-gqueue_push_mutexless :: proc(q: ^Global_Queue($T), item: T) {
-	queue.push_back(&q.q, item)
+gqueue_push_mutexless :: proc(q: ^Global_Queue($T), x: T) {
+	if q.top == nil {
+		q.top = new(Chunk(T))
+	}
+
+	if q.top.top_idx == CHUNK_CAPACITY {
+		// full
+		original_top := q.top
+		new_chunk := new_clone(Chunk(T){next_chunk = original_top})
+		new_chunk.next_chunk = original_top
+		original_top.prev_chunk = new_chunk
+		q.top = new_chunk
+	}
+
+	q.top.backing[q.top.top_idx] = x
+	q.top.top_idx += 1
+}
+
+gqueue_pop_mutexless :: proc(q: ^Global_Queue($T)) -> (x: T, ok: bool) {
+	if q.bottom == nil {
+		return
+	}
+
+	if q.bottom.bottom_idx == q.bottom.top_idx {
+		// empty
+		bot := q.bottom
+		if q.bottom.prev_chunk == nil {
+			return
+		}
+		q.bottom = q.bottom.prev_chunk
+		free(bot)
+	}
+
+	x = q.bottom.backing[q.bottom.bottom_idx]
+	ok = true
+	q.bottom.bottom_idx += 1
+	return
+}
+
+gqueue_delete :: proc(q: ^Global_Queue($T)) {
+	sync.mutex_lock(&q.mutex)
+	curr := q.bottom
+	for curr != nil {
+		prev := curr.prev_chunk
+		free(curr)
+		curr = prev
+	}
+	q.top = nil
+	q.bottom = nil
+	sync.mutex_unlock(&q.mutex)
 }
 
 gqueue_push :: proc(q: ^Global_Queue($T), item: T) {
@@ -135,18 +191,8 @@ gqueue_push :: proc(q: ^Global_Queue($T), item: T) {
 	gqueue_push_mutexless(q, item)
 }
 
-gqueue_pop_mutexless :: proc(q: ^Global_Queue($T)) -> (T, bool) {
-	return queue.pop_front_safe(&q.q)
-}
-
 gqueue_pop :: proc(q: ^Global_Queue($T)) -> (res: T, ok: bool) {
 	sync.mutex_lock(&q.mutex)
 	defer sync.mutex_unlock(&q.mutex)
 	return gqueue_pop_mutexless(q)
-}
-
-gqueue_delete :: proc(q: ^Global_Queue($T)) {
-	sync.mutex_lock(&q.mutex)
-	queue.destroy(&q.q)
-	sync.mutex_unlock(&q.mutex)
 }
