@@ -1,7 +1,9 @@
 #+private
 package oasync
 
+import "core:fmt"
 import "core:sync"
+import "core:testing"
 
 ARRAY_SIZE :: 256
 
@@ -113,8 +115,9 @@ queue_len :: proc(q: ^Local_Queue($T)) -> int {
 CHUNK_CAPACITY :: 64
 
 Chunk :: struct(T: typeid) {
-	top_idx:    int,
-	bottom_idx: int,
+	head:       int,
+	tail:       int,
+	size:       int,
 	backing:    [CHUNK_CAPACITY]T,
 	next_chunk: ^Chunk(T),
 	prev_chunk: ^Chunk(T),
@@ -128,46 +131,51 @@ Global_Queue :: struct(T: typeid) {
 
 make_gqueue :: proc($T: typeid) -> Global_Queue(T) {
 	init_chunk := new(Chunk(T))
-
 	return Global_Queue(T){top = init_chunk, bottom = init_chunk}
 }
 
 gqueue_push_mutexless :: proc(q: ^Global_Queue($T), x: T) {
 	if q.top == nil {
 		q.top = new(Chunk(T))
+		q.bottom = q.top // init bottom when the queue is empty
 	}
 
-	if q.top.top_idx == CHUNK_CAPACITY {
+	if q.top.size == CHUNK_CAPACITY {
 		// full
 		original_top := q.top
 		new_chunk := new_clone(Chunk(T){next_chunk = original_top})
-		new_chunk.next_chunk = original_top
 		original_top.prev_chunk = new_chunk
 		q.top = new_chunk
 	}
 
-	q.top.backing[q.top.top_idx] = x
-	q.top.top_idx += 1
+	q.top.backing[q.top.tail] = x
+	q.top.tail = (q.top.tail + 1) % CHUNK_CAPACITY
+	q.top.size += 1
 }
 
 gqueue_pop_mutexless :: proc(q: ^Global_Queue($T)) -> (x: T, ok: bool) {
-	if q.bottom == nil {
+	if q.bottom == nil || q.bottom.size == 0 {
 		return
 	}
 
-	if q.bottom.bottom_idx == q.bottom.top_idx {
-		// empty
+	x = q.bottom.backing[q.bottom.head]
+	q.bottom.head = (q.bottom.head + 1) % CHUNK_CAPACITY
+	q.bottom.size -= 1
+	ok = true
+
+	if q.bottom.size == 0 {
 		bot := q.bottom
 		if q.bottom.prev_chunk == nil {
-			return
-		}
-		q.bottom = q.bottom.prev_chunk
-		free(bot)
-	}
+			// last chunk, reset head and tail
+			// dont free
+			q.bottom.head = 0
+			q.bottom.tail = 0
 
-	x = q.bottom.backing[q.bottom.bottom_idx]
-	ok = true
-	q.bottom.bottom_idx += 1
+		} else {
+			q.bottom = q.bottom.prev_chunk
+			free(bot)
+		}
+	}
 	return
 }
 
@@ -184,6 +192,7 @@ gqueue_delete :: proc(q: ^Global_Queue($T)) {
 	sync.mutex_unlock(&q.mutex)
 }
 
+
 gqueue_push :: proc(q: ^Global_Queue($T), item: T) {
 	sync.mutex_lock(&q.mutex)
 	defer sync.mutex_unlock(&q.mutex)
@@ -195,4 +204,95 @@ gqueue_pop :: proc(q: ^Global_Queue($T)) -> (res: T, ok: bool) {
 	sync.mutex_lock(&q.mutex)
 	defer sync.mutex_unlock(&q.mutex)
 	return gqueue_pop_mutexless(q)
+}
+
+@(test)
+test_gqueue_basic :: proc(t: ^testing.T) {
+	q := make_gqueue(int)
+	gqueue_push_mutexless(&q, 1)
+	gqueue_push_mutexless(&q, 2)
+	gqueue_push_mutexless(&q, 3)
+
+	val, ok := gqueue_pop_mutexless(&q)
+	testing.expect(t, ok == true, "expected pop to succeed")
+	testing.expect(t, val == 1, "expected value 1")
+
+	val, ok = gqueue_pop_mutexless(&q)
+	testing.expect(t, ok == true, "expected pop to succeed")
+	testing.expect(t, val == 2, "expected value 2")
+
+	val, ok = gqueue_pop_mutexless(&q)
+	testing.expect(t, ok == true, "expected pop to succeed")
+	testing.expect(t, val == 3, "expected value 3")
+
+	val, ok = gqueue_pop_mutexless(&q)
+	testing.expect(t, ok == false, "expected pop to fail")
+
+	gqueue_delete(&q)
+}
+
+@(test)
+test_gqueue_multiple_chunks :: proc(t: ^testing.T) {
+	q := make_gqueue(int)
+
+	for i in 0 ..< CHUNK_CAPACITY * 3 {
+		gqueue_push_mutexless(&q, i)
+	}
+
+	for i in 0 ..< CHUNK_CAPACITY * 3 {
+		val, ok := gqueue_pop_mutexless(&q)
+		testing.expect(t, ok == true, "expected pop to succeed")
+		testing.expect(t, val == i, fmt.tprintf("expected value %d, got %d", i, val))
+	}
+
+	val, ok := gqueue_pop_mutexless(&q)
+	testing.expect(t, ok == false, "expected pop to fail")
+
+	gqueue_delete(&q)
+
+}
+
+@(test)
+test_gqueue_empty_refill :: proc(t: ^testing.T) {
+	q := make_gqueue(int)
+
+	for i in 0 ..< CHUNK_CAPACITY {
+		gqueue_push_mutexless(&q, i)
+	}
+
+	for i in 0 ..< CHUNK_CAPACITY {
+		_, ok := gqueue_pop_mutexless(&q)
+		testing.expect(t, ok == true, "expected pop to succeed")
+	}
+
+	for i in 0 ..< CHUNK_CAPACITY {
+		gqueue_push_mutexless(&q, i + CHUNK_CAPACITY)
+	}
+
+	for i in 0 ..< CHUNK_CAPACITY {
+		val, ok := gqueue_pop_mutexless(&q)
+		testing.expect(t, ok == true, "expected pop to succeed")
+		testing.expect(
+			t,
+			val == i + CHUNK_CAPACITY,
+			fmt.tprintf("expected value %d, got %d", i + CHUNK_CAPACITY, val),
+		)
+	}
+
+	gqueue_delete(&q)
+}
+
+
+@(test)
+test_gqueue_interleaved_push_pop :: proc(t: ^testing.T) {
+	q := make_gqueue(int)
+
+	for i in 0 ..< CHUNK_CAPACITY {
+		gqueue_push_mutexless(&q, i)
+		val, ok := gqueue_pop_mutexless(&q)
+		testing.expect(t, ok == true, "expected pop to succeed")
+		testing.expect(t, val == i, fmt.tprintf("expected value %d, got %d", i, val))
+	}
+
+	gqueue_delete(&q)
 }
