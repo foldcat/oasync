@@ -202,6 +202,17 @@ release_primitives :: proc(t: ^Task, worker: ^Worker) {
 
 }
 
+slot_run_next :: proc(t: ^Task, worker: ^Worker) {
+	if worker.run_next != nil {
+		// something is already there! push it back!
+		spawn_task(worker.run_next)
+		// and null it 
+		worker.run_next = t
+	} else {
+		worker.run_next = t
+	}
+}
+
 run_task :: proc(t: ^Task, worker: ^Worker) {
 	// if it is running a task, it isn't stealing
 	worker.is_stealing = false
@@ -215,7 +226,7 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 		switch get_task_run_status(t, worker) {
 		case .Run:
 		case .Requeue:
-			spawn_task(t)
+			slot_run_next(t, worker)
 			return
 		case .Drop:
 			return
@@ -429,6 +440,12 @@ worker_runloop :: proc(t: ^thread.Thread) {
 			// termination
 			free(cast(^Ref_Carrier)context.user_ptr)
 			return
+		}
+
+		if worker.run_next != nil {
+			run_task(worker.run_next, worker)
+			worker.run_next = nil
+			continue
 		}
 
 		// tasks in local queue gets scheduled first
