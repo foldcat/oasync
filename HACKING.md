@@ -52,4 +52,5 @@ To summarize:
 - if the global queue is empty, start stealing from other workers
 
 ## source code walkthrough
-<img width="572" height="1336" alt="image" src="https://github.com/user-attachments/assets/d96c3589-a9a1-4085-8909-30cec851df03" />
+<img width="815" height="957" alt="Untitled Diagram" src="https://github.com/user-attachments/assets/311b978f-f1df-4172-93ac-0b0fbc02052a" />
+
