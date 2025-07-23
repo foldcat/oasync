@@ -129,9 +129,7 @@ attempting to reacquire may result in segmented fault
 */
 destroy_bp :: proc(bp: ^Backpressure) {
 	bp.is_closed = true
-	if sync.atomic_load(&bp.current_runcount) == 0 {
-		free(bp)
-	}
+	free(bp)
 }
 
 
@@ -139,9 +137,6 @@ destroy_bp :: proc(bp: ^Backpressure) {
 // this procedure return false
 @(private)
 acquire_bp :: proc(bp: ^Backpressure) -> Task_Run_Status {
-	if bp.is_closed {
-		return .Drop
-	}
 	can_run := sync.atomic_load(&bp.current_runcount) < bp.max
 	if can_run {
 		sync.atomic_add(&bp.current_runcount, 1)
@@ -166,11 +161,6 @@ acquire_bp :: proc(bp: ^Backpressure) -> Task_Run_Status {
 @(private)
 release_bp :: proc(bp: ^Backpressure) {
 	sync.atomic_sub(&bp.current_runcount, 1)
-	if bp.is_closed == true {
-		if sync.atomic_load(&bp.current_runcount) == 0 {
-			free(bp)
-		}
-	}
 }
 
 /* 

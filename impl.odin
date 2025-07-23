@@ -183,12 +183,12 @@ run_effect :: proc(t: ^Task, worker: ^Worker) -> Execution_Status {
 	return .Pass
 }
 
-release_primitives :: proc(t: ^Task, worker: ^Worker) {
+release_primitives :: proc(t: ^Task, worker: ^Worker, rel_bp := true) {
 	if t.mods.resource != nil {
 		release_res(t.mods.resource, t)
 	}
 
-	if t.mods.backpressure != nil {
+	if rel_bp && t.mods.backpressure != nil {
 		release_bp(t.mods.backpressure)
 	}
 
@@ -229,6 +229,8 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 			slot_run_next(t, worker)
 			return
 		case .Drop:
+			release_primitives(t, worker, rel_bp = falsee)
+			free(t)
 			return
 		}
 	}
