@@ -99,7 +99,6 @@ Backpressure :: struct {
 	max:              int,
 	current_runcount: int,
 	mode:             BP_Mode,
-	is_closed:        bool,
 }
 
 BP_Mode :: enum {
@@ -119,16 +118,9 @@ make_bp :: proc(max: int, mode: BP_Mode) -> ^Backpressure {
 
 
 /*
-wait for all the tasks to be done and frees the backpressure 
-in the time of waiting, new tasks dispatched through backpressure 
-is dropped 
-
-should all remaining tasks be done, frees the backpressure struct
-
-attempting to reacquire may result in segmented fault
+frees underlying backpressure struct immediately
 */
 destroy_bp :: proc(bp: ^Backpressure) {
-	bp.is_closed = true
 	free(bp)
 }
 
