@@ -8,16 +8,17 @@ import "core:testing"
 import "core:time"
 
 @(private)
-base_coordinator_setup :: proc(core: proc(_: rawptr), arg: ^testing.T = nil) {
-	coord := Coordinator{}
+base_coordinator_setup :: proc(core: proc(_: rawptr), arg: ^testing.T = nil) -> ^Coordinator {
+	coord := new_clone(Coordinator{})
 	init_oa(
-		&coord,
+		coord,
 		init_proc = core,
 		init_proc_arg = arg,
 		max_workers = 4,
 		max_blocking = 2,
-		use_main_thread = true,
+		use_main_thread = false,
 	)
+	return coord
 }
 
 @(test)
@@ -25,27 +26,28 @@ test_basic_schedule :: proc(t: ^testing.T) {
 	// no hog
 	testing.set_fail_timeout(t, 5 * time.Second)
 
+	trg := new(int)
+
 	increment :: proc(ctr: rawptr) {
 		ctr := cast(^int)ctr
 		sync.atomic_add(ctr, 1)
 	}
 
-	core :: proc(_: rawptr) {
-		trg := new(int)
+	core :: proc(trg: rawptr) {
 		for _ in 1 ..= 100 {
 			go(increment, trg)
 		}
-
-		for {
-			if sync.atomic_load(trg) == 100 {
-				shutdown()
-				free(trg)
-				return
-			}
-		}
 	}
 
-	base_coordinator_setup(core)
+	coord := base_coordinator_setup(core)
+
+	for {
+		if sync.atomic_load(trg) == 100 {
+			go(proc(_: rawptr) {shutdown()}, coord = coord)
+			free(trg)
+			return
+		}
+	}
 }
 
 

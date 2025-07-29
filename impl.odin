@@ -94,7 +94,7 @@ trace_execution :: proc(t: ^Task, worker: ^Worker) {
 		"executed task",
 		t.id,
 		"now queue has",
-		queue_len(&worker.localq),
+		queue_length(&worker.localq),
 		"items",
 	)
 }
@@ -214,6 +214,7 @@ slot_run_next :: proc(t: ^Task, worker: ^Worker) {
 }
 
 run_task :: proc(t: ^Task, worker: ^Worker) {
+  trace("run task")
 	// if it is running a task, it isn't stealing
 	worker.is_stealing = false
 
@@ -229,7 +230,7 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 			slot_run_next(t, worker)
 			return
 		case .Drop:
-			release_primitives(t, worker, rel_bp = falsee)
+			release_primitives(t, worker, rel_bp = false)
 			free(t)
 			return
 		}
@@ -262,7 +263,7 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 	free(t)
 }
 
-clean_local_queue :: proc(q: ^Local_Queue(^Task)) {
+clean_local_queue :: proc(q: ^Local_Queue(^Task, LOCAL_QUEUE_SIZE)) {
 	for {
 		item, ok := queue_pop(q)
 		if !ok {
@@ -376,7 +377,7 @@ make_task :: proc(
 spawn_task :: proc(task: ^Task) {
 	worker := get_worker()
 
-	queue_push_or_overflow(&worker.localq, task, &worker.coordinator.globalq)
+	queue_push_back_or_overflow(&worker.localq, task, &worker.coordinator.globalq)
 }
 
 
@@ -416,7 +417,13 @@ steal :: proc(this: ^Worker) -> (tsk: ^Task, ok: bool) {
 			continue
 		}
 
-		task, steal_ok := queue_steal(&worker.localq)
+		// do not steal from empty
+		queue_length := queue_length(&worker.localq)
+		if queue_length == 0 {
+			return
+		}
+
+		task, steal_ok := queue_steal_into(&this.localq, &worker.localq)
 		if steal_ok {
 			return task, true
 		}
@@ -495,7 +502,7 @@ setup_worker :: proc(
 	is_main: bool,
 ) {
 	worker.id = id
-	worker.localq = Local_Queue(^Task){}
+	worker.localq = make_queue(^Task, LOCAL_QUEUE_SIZE)
 	worker.rng_seed = rand.int31()
 	worker.thread_obj = thread
 	worker.barrier_ref = barrier
@@ -504,7 +511,6 @@ setup_worker :: proc(
 }
 
 setup_thread :: proc(worker: ^Worker) -> ^thread.Thread {
-	worker.localq = Local_Queue(^Task){}
 	worker.rng_seed = rand.int31()
 
 	// weird name to avoid collision

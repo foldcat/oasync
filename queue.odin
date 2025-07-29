@@ -5,112 +5,295 @@ import "core:fmt"
 import "core:sync"
 import "core:testing"
 
-ARRAY_SIZE :: 256
+/// local queue is a lock free queue based on an array with circular behaviors
+/// based on rust's tokio runtime
 
-// https://fzn.fr/readings/ppopp13.pdf
-
-Local_Queue :: struct($T: typeid) {
-	top, bottom: int,
-	array:       [ARRAY_SIZE]T,
+Local_Queue :: struct($T: typeid, $S: int) {
+	// concurrently updated by many threads
+	// this is the result of two u32s packed together,
+	// one account for stealer position and the 
+	// other account for the "real" head position
+	// nothing is stealing when real and stealing position equates
+	// this lets us grab both the head and tail position with just 
+	// a single atomic load
+	head:   u64,
+	// only updated by one producer
+	tail:   u32,
+	// stores items
+	buffer: [S]T,
 }
 
-queue_pop :: proc(q: ^Local_Queue($T)) -> (x: T, ok: bool) {
-	// defer if ok {
-	// 	wid := get_worker_id()
-	// 	trace("worker_id", wid, "top", q.top, "bottom", q.bottom)
-	// }
+when ODIN_DEBUG {
+	// helps catch edge cases
+	LOCAL_QUEUE_SIZE :: 8
+} else {
+	// must be the 2^n so we can do a bitmask for 
+	// circular behavior, in this case we use
+	// 2 ^ 8 as the value
+	LOCAL_QUEUE_SIZE :: 256
+}
+// used for circular behaviors
+MASK: u32 : LOCAL_QUEUE_SIZE - 1
 
-	b := sync.atomic_load_explicit(&q.bottom, .Relaxed) - 1
-	sync.atomic_store_explicit(&q.bottom, b, .Relaxed)
-	sync.atomic_thread_fence(.Seq_Cst)
-	t := sync.atomic_load_explicit(&q.top, .Relaxed)
-	is_empty: bool
-	if t <= b {
-		x = sync.atomic_load_explicit(&q.array[b % ARRAY_SIZE], .Relaxed)
-		if t == b {
-			if _, race_ok := sync.atomic_compare_exchange_strong_explicit(
-				&q.top,
-				t,
-				t + 1,
-				.Seq_Cst,
-				.Relaxed,
-			); !race_ok {
-				is_empty = true
+
+// unpack a u64 into the real position and the stealer position
+unpack :: proc(pack: u64) -> (steal, real: u32) {
+	real = u32((pack >> 16) & 0xFFFF)
+	steal = u32(pack & 0xFFFF)
+	return steal, real
+}
+
+// pack the real position and the stealer position into a singular u64
+pack :: proc(real, steal: u32) -> u64 {
+	return (u64(real) << 16) | u64(steal)
+}
+
+make_queue :: proc($T: typeid, $S: int) -> Local_Queue(T, S) {
+	return Local_Queue(T, S){}
+}
+
+// subtraction/addition in odin already wraps, but honestly? might as 
+// well write this seemingly useless (and actually *is* useless)
+// procedure to stay true to the original code~
+wrapping_sub :: proc(lhs, rhs: u32) -> u32 {
+	return lhs - rhs
+}
+wrapping_add :: proc(lhs, rhs: u32) -> u32 {
+	return lhs + rhs
+}
+
+// queue_remaining_slots :: proc(q: ^Local_Queue($T, $S)) -> u32 {
+// 	steal, _ := unpack(sync.atomic_load_explicit(&q.head, sync.Atomic_Memory_Order.Acquire))
+// 	tail := sync.atomic_load_explicit(&q.tail, sync.Atomic_Memory_Order.Acquire)
+// 	return LOCAL_QUEUE_CAPACITY - wrapping_sub(tail, steal)
+//
+// }
+
+queue_length :: proc(q: ^Local_Queue($T, $S)) -> u32 {
+	_, head := unpack(sync.atomic_load_explicit(&q.head, sync.Atomic_Memory_Order.Acquire))
+	tail := sync.atomic_load_explicit(&q.tail, sync.Atomic_Memory_Order.Acquire)
+	return wrapping_sub(tail, head)
+}
+
+queue_is_empty :: proc(q: ^Local_Queue($T, $S)) -> bool {
+	return queue_length(q) == 0
+}
+
+// push a singular task into a local queue, should the queue overflow, 
+// lets injects tasks into global queue~
+queue_push_back_or_overflow :: proc(q: ^Local_Queue($T, $S), item: T, overflow: ^Global_Queue(T)) {
+	tail: u32
+	task := item
+	for {
+		head := sync.atomic_load_explicit(&q.head, sync.Atomic_Memory_Order.Acquire)
+		steal, real := unpack(head)
+		// only updated by producer, so it needn't be atomic~
+		inner_tail := q.tail
+		if wrapping_sub(inner_tail, steal) < LOCAL_QUEUE_SIZE {
+			// there is capacity for the task
+			tail = inner_tail
+			break
+		} else if steal != real {
+			// another worker is stealing, which frees up capacity 
+			// lets push our task into overflow instead~
+			gqueue_push(overflow, item)
+			return
+		} else {
+			// push current task and half into overflow 
+			// as we might have just ran out of capacity
+			v, ok := queue_push_overflow(item, real, tail, overflow, q)
+			if ok {
+				return
+			} else {
+				// lost the race, try again
+				task = v
 			}
-			sync.atomic_store_explicit(&q.bottom, b + 1, .Relaxed)
 		}
-	} else {
-		is_empty = true
-		sync.atomic_store_explicit(&q.bottom, b + 1, .Relaxed)
-	}
-	ok = !is_empty
 
+	}
+	push_back_finish(q, task, tail)
+}
+
+push_back_finish :: proc(q: ^Local_Queue($T, $S), task: T, tail: u32) {
+	idx := tail & MASK
+	q.buffer[idx] = task
+	sync.atomic_store_explicit(&q.tail, wrapping_add(tail, 1), sync.Atomic_Memory_Order.Release)
+}
+
+NUM_TASK_TAKEN: u32 : u32(LOCAL_QUEUE_SIZE / 2)
+
+queue_push_overflow :: proc(
+	task: $T,
+	head, tail: u32,
+	overflow: ^Global_Queue(T),
+	local_q: ^Local_Queue(T, $S),
+) -> (
+	item_output: T,
+	ok: bool,
+) {
+	prev := pack(head, head)
+
+	res, oka := sync.atomic_compare_exchange_strong_explicit(
+		&local_q.head,
+		prev,
+		pack(wrapping_add(head, NUM_TASK_TAKEN), wrapping_add(head, NUM_TASK_TAKEN)),
+		sync.Atomic_Memory_Order.Release,
+		sync.Atomic_Memory_Order.Relaxed,
+	)
+	if !oka {
+		// failed to claim the tasks, probably because we lost the race
+		// try the full push routine instead
+		return task, false
+	}
+
+	// hold down the mutext till we pushed everything in
+	sync.mutex_lock(&overflow.mutex)
+	for i in 0 ..< NUM_TASK_TAKEN {
+		idx := wrapping_add(i, head) & MASK
+		gqueue_push_mutexless(overflow, local_q.buffer[idx])
+	}
+	sync.mutex_unlock(&overflow.mutex)
+
+	ok = true
 	return
 }
 
+queue_pop :: proc(q: ^Local_Queue($T, $S)) -> (res: T, ok: bool) {
+	head := sync.atomic_load_explicit(&q.head, sync.Atomic_Memory_Order.Acquire)
 
-@(require_results)
-queue_push :: proc(q: ^Local_Queue($T), x: T) -> bool {
-	b := sync.atomic_load_explicit(&q.bottom, .Relaxed)
-	t := sync.atomic_load_explicit(&q.top, .Acquire)
-	if b - t > ARRAY_SIZE - 1 {
-		return false
+	idx: u32
+	for {
+		steal, real := unpack(head)
+		tail := q.tail
+		if real == tail {
+			return
+		}
+		next_real := wrapping_add(real, 1)
+
+		next: u64
+		if steal == real {
+			next = pack(next_real, next_real)
+		} else {
+			next = pack(next_real, steal)
+		}
+		actual, oka := sync.atomic_compare_exchange_strong_explicit(
+			&q.head,
+			head,
+			next,
+			sync.Atomic_Memory_Order.Acq_Rel,
+			sync.Atomic_Memory_Order.Acquire,
+		)
+		if oka {
+			idx = real & MASK
+			break
+		} else {
+			head = actual
+		}
 	}
-	sync.atomic_store_explicit(&q.array[b % ARRAY_SIZE], x, .Relaxed)
-	sync.atomic_thread_fence(.Release)
-	sync.atomic_store_explicit(&q.bottom, b + 1, .Relaxed)
-	return true
+	return q.buffer[idx], true
+
 }
 
-queue_push_or_overflow :: proc(q: ^Local_Queue($T), x: T, gq: ^Global_Queue(T)) {
-	if queue_push(q, x) {
+queue_steal_into :: proc(q: ^Local_Queue($T, $S), dst: ^Local_Queue(T, S)) -> (res: T, ok_: bool) {
+	dst_tail := dst.tail
+	steal, _ := unpack(sync.atomic_load_explicit(&dst.head, sync.Atomic_Memory_Order.Acquire))
+	if wrapping_sub(dst_tail, steal) > u32(LOCAL_QUEUE_SIZE / 2) {
+		// we could steal less but it would be too complex
 		return
-	} else {
-		sync.mutex_lock(&gq.mutex)
-		defer sync.mutex_unlock(&gq.mutex)
-		for _ in 1 ..= queue_len(q) / 2 {
-			item, ok := queue_pop(q)
-			if !ok {
-				break
+	}
+	n := queue_steal_into2(q, dst, dst_tail)
+	if n == 0 {
+		// nothing to steal
+		return
+	}
+	// return a task
+	n -= 1
+	ret_pos := wrapping_add(dst_tail, n)
+	ret_idx := ret_pos & MASK
+	ret := dst.buffer[ret_idx]
+	if n == 0 {
+		// dst empty but a single task is stolen
+		return ret, true
+	}
+	sync.atomic_store_explicit(
+		&dst.tail,
+		wrapping_add(dst_tail, n),
+		sync.Atomic_Memory_Order.Release,
+	)
+	return ret, true
 
-			}
-			gqueue_push_mutexless(gq, item)
+}
+
+queue_steal_into2 :: proc(q: ^Local_Queue($T, $S), dst: ^Local_Queue(T, S), dst_tail: u32) -> u32 {
+	prev_packed := sync.atomic_load_explicit(&q.head, sync.Atomic_Memory_Order.Acquire)
+	next_packed: u64
+
+	n: u32
+	for {
+		src_head_steal, src_head_real := unpack(prev_packed)
+		src_tail := sync.atomic_load_explicit(&q.tail, sync.Atomic_Memory_Order.Acquire)
+
+		if src_head_steal != src_head_real {
+			// another thread is concurrently stealing 
+			// we shouldn't interrupt...
+			return 0
+		}
+
+		num := wrapping_sub(src_tail, src_head_real)
+		num = num - num / 2
+
+		if num == 0 {
+			// nothing to steal
+			return 0
+		}
+
+		steal_to := wrapping_add(src_head_real, num)
+		next_packed = pack(src_head_real, steal_to)
+
+		res, ok := sync.atomic_compare_exchange_strong_explicit(
+			&q.head,
+			prev_packed,
+			next_packed,
+			sync.Atomic_Memory_Order.Acq_Rel,
+			sync.Atomic_Memory_Order.Acquire,
+		)
+		if ok {
+			n = num
+		} else {
+			prev_packed = res
 		}
 	}
+	first, _ := unpack(next_packed)
+	for i in 0 ..< n {
+		src_pos := wrapping_add(first, i)
+		dst_pos := wrapping_add(dst_tail, i)
 
-}
+		src_idx := src_pos & MASK
+		dst_idx := dst_pos & MASK
 
-queue_steal :: proc(q: ^Local_Queue($T)) -> (x: T, okay: bool) {
-	t := sync.atomic_load_explicit(&q.top, .Acquire)
-	sync.atomic_thread_fence(.Seq_Cst)
-	b := sync.atomic_load_explicit(&q.bottom, .Acquire)
-
-	if t < b {
-		// not empty queue
-		x = sync.atomic_load_explicit(&q.array[t % ARRAY_SIZE], .Consume)
-		if _, ok := sync.atomic_compare_exchange_strong_explicit(
-			&q.top,
-			t,
-			t + 1,
-			.Seq_Cst,
-			.Relaxed,
-		); !ok {
-			// failed race
-			return x, false
+		task := q.buffer[src_idx]
+		dst.buffer[dst_idx] = task
+	}
+	prev_packed = next_packed
+	for {
+		_, head := unpack(prev_packed)
+		next_packed := pack(head, head)
+		res, ok := sync.atomic_compare_exchange_strong_explicit(
+			&q.head,
+			prev_packed,
+			next_packed,
+			sync.Atomic_Memory_Order.Acq_Rel,
+			sync.Atomic_Memory_Order.Acquire,
+		)
+		if ok {
+			return n
+		} else {
+			prev_packed = res
 		}
-		return x, true
-	} else {
-		return x, false
 	}
 }
 
-queue_len :: proc(q: ^Local_Queue($T)) -> int {
-	b := sync.atomic_load_explicit(&q.bottom, .Relaxed)
-	t := sync.atomic_load_explicit(&q.top, .Relaxed)
-	return b - t
-}
-
-/// we will need a mutex for this
+// we will need a mutex for this
 
 CHUNK_CAPACITY :: 64
 
@@ -195,15 +378,15 @@ gqueue_delete :: proc(q: ^Global_Queue($T)) {
 
 gqueue_push :: proc(q: ^Global_Queue($T), item: T) {
 	sync.mutex_lock(&q.mutex)
-	defer sync.mutex_unlock(&q.mutex)
-
 	gqueue_push_mutexless(q, item)
+	sync.mutex_unlock(&q.mutex)
 }
 
 gqueue_pop :: proc(q: ^Global_Queue($T)) -> (res: T, ok: bool) {
 	sync.mutex_lock(&q.mutex)
-	defer sync.mutex_unlock(&q.mutex)
-	return gqueue_pop_mutexless(q)
+	res, ok = gqueue_pop_mutexless(q)
+	sync.mutex_unlock(&q.mutex)
+	return
 }
 
 @(test)

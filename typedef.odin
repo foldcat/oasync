@@ -23,7 +23,7 @@ Coordinator :: struct {
 Worker :: struct {
 	barrier_ref:      ^sync.Barrier,
 	thread_obj:       ^thread.Thread,
-	localq:           Local_Queue(^Task),
+	localq:           Local_Queue(^Task, LOCAL_QUEUE_SIZE),
 	current_running:  ^Task,
 	run_next:         ^Task,
 	id:               u8,
