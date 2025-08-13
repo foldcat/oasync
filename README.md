@@ -5,7 +5,7 @@
 
 ---
 
-![badge](https://img.shields.io/badge/documentation%20taken%20seriously-ff7eb6) ![Static Badge](https://img.shields.io/badge/odin_version-dev--2025--07-blue)
+![badge](https://img.shields.io/badge/documentation%20taken%20seriously-ff7eb6) ![Static Badge](https://img.shields.io/badge/odin_version-dev--2025--08-blue)
 
 M:N multithreading for Odin. The end goal is to implement virtual threads that 
 automatically and quickly parallelize tasks across several os threads.
