@@ -7,12 +7,11 @@
 
 ![badge](https://img.shields.io/badge/documentation%20taken%20seriously-ff7eb6) ![Static Badge](https://img.shields.io/badge/odin_version-dev--2025--07-blue)
 
-Now officially in beta state!
-
 M:N multithreading for Odin. The end goal is to implement virtual threads that 
 automatically and quickly parallelize tasks across several os threads.
 
-Feel free to report bugs and request features by creating issues!
+This library is now stable, but still, feel free to report bugs and request features by 
+creating issues!
 
 Also note that oasync is NOT compatable with `core:sync`. Please use 
 the synchronization primitives provided by oasync instead.
