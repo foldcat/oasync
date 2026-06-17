@@ -28,7 +28,7 @@ compute_steal_count :: proc(current_worker: ^Worker) -> (count: int) {
 	return
 }
 
-// should a task be run? should it be dropped? should 
+// should a task be run? should it be dropped? should
 // we requeue it?
 get_task_run_status :: proc(t: ^Task, worker: ^Worker) -> Task_Run_Status {
 	// resources
@@ -79,7 +79,7 @@ get_task_run_status :: proc(t: ^Task, worker: ^Worker) -> Task_Run_Status {
 		diff := time.tick_diff(t.mods.execute_at, now)
 		if time.duration_milliseconds(diff) <= 0 {
 			// it is in future
-			// we are not executing tasks that is supposed to be 
+			// we are not executing tasks that is supposed to be
 			// ran in future
 			return .Requeue
 		}
@@ -136,7 +136,7 @@ Execution_Status :: enum {
 	Pass,
 	// return immediately without cleanup
 	Drop,
-	// execute next task in chain 
+	// execute next task in chain
 	Advance,
 }
 
@@ -206,7 +206,7 @@ slot_run_next :: proc(t: ^Task, worker: ^Worker) {
 	if worker.run_next != nil {
 		// something is already there! push it back!
 		spawn_task(worker.run_next)
-		// and null it 
+		// and null it
 		worker.run_next = t
 	} else {
 		worker.run_next = t
@@ -245,7 +245,7 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 		spawn_task(t)
 		return
 	case .Drop:
-		// do not execute task 
+		// do not execute task
 		// release primitives and drop now
 		release_primitives(t, worker)
 		return
@@ -384,20 +384,21 @@ spawn_unsafe_task :: proc(task: ^Task, coord: ^Coordinator) {
 	gqueue_push(&coord.globalq, task)
 }
 
-// fast random number generator via linear congruential 
+// fast random number generator via linear congruential
 // algorithm
-// seed is pulled from worker, thus only works 
+// seed is pulled from worker, thus only works
 // inside workers
 // by default the seed is generated via a rand.int31()
 // and then acted on by the lcg
 lcg :: proc(worker: ^Worker, max: int) -> i32 {
-	m :: 25253
-	a :: 148251
-	c :: 10007
+	a: u32 : 1103515245
+	c: u32 : 12345
+	mask: u32 : 0x7fffffff
 
-	worker.rng_seed = (a * worker.rng_seed + c) % m
+	next_seed := (a * u32(worker.rng_seed) + c) & mask
+	worker.rng_seed = type_of(worker.rng_seed)(next_seed)
 
-	return abs(worker.rng_seed) % i32(max)
+	return i32(next_seed) % i32(max)
 }
 
 steal :: proc(this: ^Worker) -> (tsk: ^Task, ok: bool) {
@@ -427,10 +428,10 @@ steal :: proc(this: ^Worker) -> (tsk: ^Task, ok: bool) {
 // event loop that every worker runs
 worker_runloop :: proc(t: ^thread.Thread) {
 	worker := get_worker()
-	// during shutdown, worker is freed 
-	// thus segmented fault will be caused by 
+	// during shutdown, worker is freed
+	// thus segmented fault will be caused by
 	// accessing worker.coordinator.is_running
-	// for this reason the coordinator pointer 
+	// for this reason the coordinator pointer
 	// should be stored on the stack
 	coord := worker.coordinator
 
@@ -457,7 +458,7 @@ worker_runloop :: proc(t: ^thread.Thread) {
 			continue
 		}
 
-		// local queue seems to be empty at this point, take a look 
+		// local queue seems to be empty at this point, take a look
 		// at the global channel
 		tsk, exist = gqueue_pop(&worker.coordinator.globalq)
 		if exist {
@@ -467,7 +468,7 @@ worker_runloop :: proc(t: ^thread.Thread) {
 		}
 
 		scount := compute_steal_count(worker)
-		// global queue seems to be empty too, enter stealing mode 
+		// global queue seems to be empty too, enter stealing mode
 
 		// throttle stealing to half the total thread count
 		if scount < (worker.coordinator.worker_count / 2) {
