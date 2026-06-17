@@ -159,7 +159,7 @@ that you should not edit any fields of the coordinator and simply
 leave it as is
 
 max_workers: maximum amount of threads to use 
-for the scheduler, leave it at 0 to use os.processor_core_count()
+for the scheduler, leave it at 0 to use get_processor_core_count()
 as it's value
 
 max_blocking: the maximum amount of threads 
@@ -190,7 +190,7 @@ init_oa :: proc(
 	max_workers := max_workers // make it mutable
 	max_blocking := max_blocking
 	if max_workers == 0 {
-		max_workers = os.processor_core_count()
+		max_workers = os.get_processor_core_count()
 	}
 	if max_blocking == 0 {
 		max_blocking = max_workers / 2
