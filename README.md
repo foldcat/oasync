@@ -56,7 +56,7 @@ main :: proc() {
         init_proc_arg = nil,
         // amount of worker threads oasync will run
         // omit this field or set to 0 for oasync to use 
-        // os.get_processor_core_count() as its value
+        // os.processor_core_count() as its value
         max_workers = 4,
         // how many blocking taskes should be allowed 
         // to execute at the same time

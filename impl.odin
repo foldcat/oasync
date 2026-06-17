@@ -229,7 +229,7 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 			slot_run_next(t, worker)
 			return
 		case .Drop:
-			release_primitives(t, worker, rel_bp = false)
+			release_primitives(t, worker, rel_bp = falsee)
 			free(t)
 			return
 		}
