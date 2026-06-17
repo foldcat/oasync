@@ -5,7 +5,7 @@
 
 ---
 
-![badge](https://img.shields.io/badge/documentation%20taken%20seriously-ff7eb6) ![Static Badge](https://img.shields.io/badge/odin_version-dev--2025--08-blue)
+![badge](https://img.shields.io/badge/documentation%20taken%20seriously-ff7eb6) ![Static Badge](https://img.shields.io/badge/odin_version-dev--2026--06-blue)
 
 INFO: Odin has released [non blocking IO](https://pkg.odin-lang.org/core/nbio/) into it's
 core library! You should use that instead of this.
