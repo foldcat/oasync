@@ -57,11 +57,12 @@ get_task_run_status :: proc(t: ^Task, worker: ^Worker) -> Task_Run_Status {
 	EMPTY_TICK :: time.Tick{}
 	if t.mods.execute_at != EMPTY_TICK {
 		now := time.tick_now()
-		diff := time.tick_diff(t.mods.execute_at, now)
-		if time.duration_milliseconds(diff) <= 0 {
-			// it is in future
-			// we are not executing tasks that is supposed to be
-			// ran in future
+		diff := time.tick_diff(now, t.mods.execute_at)
+
+		// it is in future
+		// we are not executing tasks that is supposed to be
+		// ran in future
+		if time.duration_nanoseconds(diff) > 0 {
 			return .Requeue
 		}
 	}
