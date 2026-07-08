@@ -7,7 +7,7 @@
 
 ![badge](https://img.shields.io/badge/documentation%20taken%20seriously-ff7eb6) ![Static Badge](https://img.shields.io/badge/odin_version-dev--2026--06-blue)
 
-INFO: Besides Oasync, [non blocking IO](https://pkg.odin-lang.org/core/nbio/) may also work
+INFO: Besides oasync, [non blocking IO](https://pkg.odin-lang.org/core/nbio/) may also work
 for you, you should check it out.
 
 M:N multithreading for Odin. The end goal is to implement virtual threads that
