@@ -16,6 +16,8 @@ Coordinator :: struct {
 	worker_count:       int,
 	globalq:            Global_Queue(^Task),
 	max_blocking_count: int,
+	blocking_count:     int,
+	stealing_count:     int,
 }
 
 // assigned to each thread

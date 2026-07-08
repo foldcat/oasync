@@ -8,26 +8,6 @@ import "core:sync"
 import "core:thread"
 import "core:time"
 
-compute_blocking_count :: proc(workers: []Worker) -> int {
-	count := 0
-	for &worker in workers {
-		if worker.is_blocking {
-			count += 1
-		}
-	}
-	return count
-}
-
-
-compute_steal_count :: proc(current_worker: ^Worker) -> (count: int) {
-	for worker in current_worker.coordinator.workers {
-		if worker.is_stealing {
-			count += 1
-		}
-	}
-	return
-}
-
 // should a task be run? should it be dropped? should
 // we requeue it?
 get_task_run_status :: proc(t: ^Task, worker: ^Worker) -> Task_Run_Status {
@@ -64,12 +44,13 @@ get_task_run_status :: proc(t: ^Task, worker: ^Worker) -> Task_Run_Status {
 	}
 
 	// blocking
-	current_count := compute_blocking_count(worker.coordinator.workers)
+	current_count := sync.atomic_load_explicit(&worker.coordinator.blocking_count, .Relaxed)
 	if t.mods.is_blocking {
 		if current_count >= worker.coordinator.max_blocking_count {
 			return .Requeue
 		}
 		worker.is_blocking = true
+		sync.atomic_add_explicit(&worker.coordinator.blocking_count, 1, .Relaxed)
 	}
 
 	// timed
@@ -198,8 +179,8 @@ release_primitives :: proc(t: ^Task, worker: ^Worker, rel_bp := true) {
 
 	if t.mods.is_blocking {
 		worker.is_blocking = false
+		sync.atomic_sub_explicit(&worker.coordinator.blocking_count, 1, .Relaxed)
 	}
-
 }
 
 slot_run_next :: proc(t: ^Task, worker: ^Worker) {
@@ -216,6 +197,7 @@ slot_run_next :: proc(t: ^Task, worker: ^Worker) {
 run_task :: proc(t: ^Task, worker: ^Worker) {
 	// if it is running a task, it isn't stealing
 	worker.is_stealing = false
+	sync.atomic_sub_explicit(&worker.coordinator.stealing_count, 1, .Relaxed)
 
 	worker.current_running = t
 
@@ -467,12 +449,13 @@ worker_runloop :: proc(t: ^thread.Thread) {
 			continue
 		}
 
-		scount := compute_steal_count(worker)
+		scount := sync.atomic_load_explicit(&worker.coordinator.stealing_count, .Relaxed)
 		// global queue seems to be empty too, enter stealing mode
 
 		// throttle stealing to half the total thread count
 		if scount < (worker.coordinator.worker_count / 2) {
 			worker.is_stealing = true
+			sync.atomic_add_explicit(&worker.coordinator.stealing_count, 1, .Relaxed)
 		}
 
 		// only steal when allowed
