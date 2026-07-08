@@ -364,7 +364,8 @@ foo :: proc(a: rawptr) {
 
 core :: proc(_: rawptr) {
     // allow only 3 tasks to run at the same time
-    bp := oa.make_bp(3, .Lossy)
+    // backoff of 5 ms, which is the default
+    bp := oa.make_bp(3, .Lossy, time.Millisecond * 5)
     for i in 1 ..= 5 {
         inp := new_clone(i)
         oa.go(foo, inp, bp = bp)

@@ -33,13 +33,15 @@ get_task_run_status :: proc(t: ^Task, worker: ^Worker) -> Task_Run_Status {
 
 	// backpressure
 	if t.mods.backpressure != nil {
-		switch acquire_bp(t.mods.backpressure) {
+		switch acquire_bp(t.mods.backpressure, t) {
 		case .Run:
 		// continue
 		case .Drop:
 			return .Drop
 		case .Requeue:
 			return .Requeue
+		case .Delay:
+			return .Delay
 		}
 	}
 
@@ -63,7 +65,7 @@ get_task_run_status :: proc(t: ^Task, worker: ^Worker) -> Task_Run_Status {
 		// we are not executing tasks that is supposed to be
 		// ran in future
 		if time.duration_nanoseconds(diff) > 0 {
-			return .Requeue
+			return .Delay
 		}
 	}
 
@@ -215,6 +217,14 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 			release_primitives(t, worker, rel_bp = false)
 			free(t)
 			return
+
+		case .Delay:
+			coord := worker.coordinator
+			sync.mutex_lock(&coord.timed_mutex)
+			timed_queue_push(&coord.timed_q, t)
+			sync.cond_signal(&coord.timed_cond) // wake bg thread if this is the new closest task
+			sync.mutex_unlock(&coord.timed_mutex)
+			return
 		}
 	}
 
@@ -272,6 +282,29 @@ _shutdown :: proc(graceful := true) {
 	}
 
 	worker.coordinator.is_running = false
+
+	sync.mutex_lock(&worker.coordinator.timed_mutex)
+	sync.cond_signal(&worker.coordinator.timed_cond)
+	sync.mutex_unlock(&worker.coordinator.timed_mutex)
+
+	if worker.coordinator.timed_thread != nil {
+		thread.join(worker.coordinator.timed_thread)
+		thread.destroy(worker.coordinator.timed_thread)
+	}
+
+	// free tasks sitting in the timed queue
+	for len(worker.coordinator.timed_q.tasks) > 0 {
+		item, _ := timed_queue_pop(&worker.coordinator.timed_q)
+		switch v in item.effect {
+		case Singleton_Effect:
+			free(item)
+		case Chain_Effect:
+			delete(v.effects)
+			free(item)
+		}
+	}
+	delete(worker.coordinator.timed_q.tasks)
+
 	for &worker in worker.coordinator.workers {
 		clean_local_queue(&worker.localq)
 		if worker.hogs_main_thread {
@@ -408,6 +441,46 @@ steal :: proc(this: ^Worker) -> (tsk: ^Task, ok: bool) {
 	return
 }
 
+timed_worker_loop :: proc(t: ^thread.Thread) {
+	coord := cast(^Coordinator)t.data
+
+	for {
+		sync.mutex_lock(&coord.timed_mutex)
+
+		if !coord.is_running {
+			sync.mutex_unlock(&coord.timed_mutex)
+			return
+		}
+
+		task, has_task := timed_queue_peek(&coord.timed_q)
+		if !has_task {
+			// no timed task, just sleep indefinitely till a new one arrive
+			// or the system shuts down
+			sync.cond_wait(&coord.timed_cond, &coord.timed_mutex)
+			sync.mutex_unlock(&coord.timed_mutex)
+			continue
+		}
+
+		now := time.tick_now()
+		diff := time.tick_diff(now, task.mods.execute_at)
+		dur_ns := time.duration_nanoseconds(diff)
+
+		if dur_ns <= 0 {
+			// task is ready
+			// gotta throw it outta the heap and drop it into gqueue
+			_, _ = timed_queue_pop(&coord.timed_q)
+			sync.mutex_unlock(&coord.timed_mutex)
+
+			gqueue_push(&coord.globalq, task)
+		} else {
+			// in future task, sleep till it is ready or a closer task wakes up
+			dur := time.Duration(dur_ns)
+			sync.cond_wait_with_timeout(&coord.timed_cond, &coord.timed_mutex, dur)
+			sync.mutex_unlock(&coord.timed_mutex)
+		}
+	}
+}
+
 // event loop that every worker runs
 worker_runloop :: proc(t: ^thread.Thread) {
 	worker := get_worker()
@@ -542,6 +615,14 @@ _init :: proc(
 	if use_main_thread {
 		required_worker_count -= 1
 	}
+
+	// timed threads
+	coord.timed_q = Timed_Queue {
+		tasks = make([dynamic]^Task),
+	}
+	coord.timed_thread = thread.create(timed_worker_loop)
+	coord.timed_thread.data = coord
+	thread.start(coord.timed_thread)
 
 	for i in 0 ..< required_worker_count {
 		worker := &coord.workers[i]

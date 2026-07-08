@@ -2,13 +2,14 @@ package oasync
 
 import "core:container/queue"
 import "core:sync"
+import "core:time"
 
 // a mutex acquired by a task
 Resource :: struct {
 	owner: Task_Id,
 }
 
-// mutable definition due to odin compiler not allowing this 
+// mutable definition due to odin compiler not allowing this
 // to be a constant
 @(private)
 Empty_Id := Task_Id {
@@ -99,6 +100,7 @@ Backpressure :: struct {
 	max:              int,
 	current_runcount: int,
 	mode:             BP_Mode,
+	backoff:          time.Duration,
 }
 
 BP_Mode :: enum {
@@ -112,8 +114,8 @@ Backpressure struct for more info
 
 allocated on the heap
 */
-make_bp :: proc(max: int, mode: BP_Mode) -> ^Backpressure {
-	return new_clone(Backpressure{max = max, mode = mode})
+make_bp :: proc(max: int, mode: BP_Mode, backoff := time.Millisecond * 5) -> ^Backpressure {
+	return new_clone(Backpressure{max = max, mode = mode, backoff = backoff})
 }
 
 
@@ -125,20 +127,38 @@ destroy_bp :: proc(bp: ^Backpressure) {
 }
 
 
-// task should be push back into the local queue should 
+// task should be push back into the local queue should
 // this procedure return false
 @(private)
-acquire_bp :: proc(bp: ^Backpressure) -> Task_Run_Status {
-	can_run := sync.atomic_load(&bp.current_runcount) < bp.max
-	if can_run {
-		sync.atomic_add(&bp.current_runcount, 1)
+acquire_bp :: proc(bp: ^Backpressure, t: ^Task) -> Task_Run_Status {
+	can_run := false
+
+	for {
+		current := sync.atomic_load(&bp.current_runcount)
+		if current >= bp.max {
+			break // no slots available
+		}
+
+		// attempt to claim the slot
+		if _, ok := sync.atomic_compare_exchange_strong(
+			&bp.current_runcount,
+			current,
+			current + 1,
+		); ok {
+			can_run = true
+			break
+		}
 	}
+
 	switch bp.mode {
 	case .Loseless:
 		if can_run {
 			return .Run
 		} else {
-			return .Requeue
+			// calculate and put the future execution time onto the task
+			now := time.tick_now()
+			t.mods.execute_at = time.tick_add(now, bp.backoff)
+			return .Delay // ask the scheduler to throw this into the heap
 		}
 	case .Lossy:
 		if can_run {
@@ -218,7 +238,7 @@ destroy_cb :: proc(cb: ^Cyclic_Barrier) {
 
 @(private)
 acquire_cb :: proc(cb: ^Cyclic_Barrier, t: ^Task) -> bool {
-	// can't acquire resource 
+	// can't acquire resource
 	// try again
 	if !acquire_res(cb.mutex, t) {
 		return false
@@ -250,8 +270,8 @@ acquire_cb :: proc(cb: ^Cyclic_Barrier, t: ^Task) -> bool {
 	if t.id not_in cb.set {
 		trace("push into waiting")
 		queue.push_back(&cb.queue, t.id)
-		// we use a map as a set 
-		// the value of the items doesn't matter 
+		// we use a map as a set
+		// the value of the items doesn't matter
 		// we only care if it exists or not
 		cb.set[t.id] = false
 	}

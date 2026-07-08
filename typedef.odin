@@ -18,6 +18,10 @@ Coordinator :: struct {
 	max_blocking_count: int,
 	blocking_count:     int,
 	stealing_count:     int,
+	timed_q:            Timed_Queue,
+	timed_mutex:        sync.Mutex,
+	timed_cond:         sync.Cond,
+	timed_thread:       ^thread.Thread,
 }
 
 // assigned to each thread
@@ -100,6 +104,8 @@ Task_Run_Status :: enum {
 	Run,
 	// put the task back into a queue
 	Requeue,
+	// put it into time queue
+	Delay,
 }
 
 // modifiers of the tasks
