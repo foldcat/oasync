@@ -6,108 +6,281 @@ import "core:sync"
 import "core:testing"
 
 ARRAY_SIZE :: 256
+#assert(ARRAY_SIZE > 0 && (ARRAY_SIZE & (ARRAY_SIZE - 1)) == 0)
 
-// https://fzn.fr/readings/ppopp13.pdf
+Queue_Index :: u32
+Packed_Head :: u64
+
+QUEUE_CAP :: Queue_Index(ARRAY_SIZE)
+QUEUE_MASK :: Queue_Index(ARRAY_SIZE - 1)
+QUEUE_HALF :: ARRAY_SIZE / 2
+
+// adapted from tokio.rs's code
+// note: top becomes a packed value (high 32 bit: steal steal head, lower 32 bits: real head)
+// if steal head == real head, there is no active stealer
+// when steal head != real head, a stealer has claimed items
 
 Local_Queue :: struct($T: typeid) {
-	top, bottom: int,
-	array:       [ARRAY_SIZE]T,
+	top:    Packed_Head,
+	bottom: Queue_Index,
+	array:  [ARRAY_SIZE]T,
 }
 
-queue_pop :: proc(q: ^Local_Queue($T)) -> (x: T, ok: bool) {
-	// defer if ok {
-	// 	wid := get_worker_id()
-	// 	trace("worker_id", wid, "top", q.top, "bottom", q.bottom)
-	// }
+queue_pack_head :: proc(steal, real: Queue_Index) -> Packed_Head {
+	return Packed_Head(real) | (Packed_Head(steal) << 32)
+}
 
-	b := sync.atomic_load_explicit(&q.bottom, .Relaxed) - 1
-	sync.atomic_store_explicit(&q.bottom, b, .Relaxed)
-	sync.atomic_thread_fence(.Seq_Cst)
-	t := sync.atomic_load_explicit(&q.top, .Relaxed)
-	is_empty: bool
-	if t <= b {
-		x = sync.atomic_load_explicit(&q.array[b % ARRAY_SIZE], .Relaxed)
-		if t == b {
-			if _, race_ok := sync.atomic_compare_exchange_strong_explicit(
-				&q.top,
-				t,
-				t + 1,
-				.Seq_Cst,
-				.Relaxed,
-			); !race_ok {
-				is_empty = true
-			}
-			sync.atomic_store_explicit(&q.bottom, b + 1, .Relaxed)
-		}
-	} else {
-		is_empty = true
-		sync.atomic_store_explicit(&q.bottom, b + 1, .Relaxed)
-	}
-	ok = !is_empty
-
+queue_unpack_head :: proc(head: Packed_Head) -> (steal, real: Queue_Index) {
+	real = Queue_Index(head & 0xffff_ffff)
+	steal = Queue_Index(head >> 32)
 	return
 }
 
+queue_idx :: proc(pos: Queue_Index) -> int {
+	return int(pos & QUEUE_MASK)
+}
+
+queue_distance :: proc(from, to: Queue_Index) -> Queue_Index {
+	// wraps anyways
+	return to - from
+}
+
+queue_push_finish :: proc(q: ^Local_Queue($T), x: T, tail: Queue_Index) {
+	idx := queue_idx(tail)
+
+	// only the owning producer writes to this place, and the capacity check
+	// makes sure the slot is not visible to consumers
+	q.array[idx] = x
+
+	// publish new task
+	// consumer or stealer acquire load bottom before reading from the slot
+	sync.atomic_store_explicit(&q.bottom, tail + 1, .Release)
+}
 
 @(require_results)
 queue_push :: proc(q: ^Local_Queue($T), x: T) -> bool {
-	b := sync.atomic_load_explicit(&q.bottom, .Relaxed)
-	t := sync.atomic_load_explicit(&q.top, .Acquire)
-	if b - t > ARRAY_SIZE - 1 {
+	head := sync.atomic_load_explicit(&q.top, .Acquire)
+	steal, _ := queue_unpack_head(head)
+
+	// owning thread can write bottom but other threads read it
+	tail := sync.atomic_load_explicit(&q.bottom, .Relaxed)
+
+	// use steal head for capacity check
+	// if a stealer is active, the real head probably advanced, but the slots
+	// from steal real are not free as the stealer has not copied or read completely
+	if queue_distance(steal, tail) >= QUEUE_CAP {
 		return false
 	}
-	sync.atomic_store_explicit(&q.array[b % ARRAY_SIZE], x, .Relaxed)
-	sync.atomic_thread_fence(.Release)
-	sync.atomic_store_explicit(&q.bottom, b + 1, .Relaxed)
+
+	queue_push_finish(q, x, tail)
+	return true
+}
+
+queue_push_overflow :: proc(
+	q: ^Local_Queue($T),
+	x: T,
+	head: Queue_Index,
+	tail: Queue_Index,
+	gq: ^Global_Queue(T),
+) -> bool {
+	// ensure that queue is full in this path
+	if queue_distance(head, tail) != QUEUE_CAP {
+		return false
+	}
+
+	// claim currently queued tasks
+	// makes sure the queue is empty, but the buffer still contains old tasks
+	// as tail wraps to the same slots, we can expose the first half again
+	// by advancing bottom after cas
+
+	expected := queue_pack_head(head, head)
+	claimed := queue_pack_head(tail, tail)
+
+	actual, ok := sync.atomic_compare_exchange_strong_explicit(
+		&q.top,
+		expected,
+		claimed,
+		.Seq_Cst,
+		.Acquire,
+	)
+
+	if !ok {
+		_ = actual
+		return false
+	}
+
+	// reexpose the first half of the old queue locally
+	sync.atomic_store_explicit(&q.bottom, tail + Queue_Index(QUEUE_HALF), .Release)
+
+	// move the second half, plus the newly pushed task, into the global queue
+	sync.mutex_lock(&gq.mutex)
+	defer sync.mutex_unlock(&gq.mutex)
+
+	for i in 0 ..< QUEUE_HALF {
+		pos := head + Queue_Index(QUEUE_HALF + i)
+		item := q.array[queue_idx(pos)]
+		gqueue_push_mutexless(gq, item)
+	}
+
+	gqueue_push_mutexless(gq, x)
+
 	return true
 }
 
 queue_push_or_overflow :: proc(q: ^Local_Queue($T), x: T, gq: ^Global_Queue(T)) {
-	if queue_push(q, x) {
-		return
-	} else {
-		sync.mutex_lock(&gq.mutex)
-		defer sync.mutex_unlock(&gq.mutex)
-		for _ in 1 ..= queue_len(q) / 2 {
-			item, ok := queue_pop(q)
-			if !ok {
-				break
+	task := x
 
-			}
-			gqueue_push_mutexless(gq, item)
+	for {
+		head_packed := sync.atomic_load_explicit(&q.top, .Acquire)
+		steal, real := queue_unpack_head(head_packed)
+
+		tail := sync.atomic_load_explicit(&q.bottom, .Relaxed)
+
+		// fast path: enough capacity
+		if queue_distance(steal, tail) < QUEUE_CAP {
+			queue_push_finish(q, task, tail)
+			return
 		}
-	}
 
+		// if steam is active, overflow does not happen from local queue as
+		// the stealer is about to free space
+		// put only the new task in gqueue
+		if steal != real {
+			gqueue_push(gq, task)
+			return
+		}
+
+		// full queue & no active stealer, try to move half of the queue + new task
+		// into em global queue
+		if queue_push_overflow(q, task, real, tail, gq) {
+			return
+		}
+
+		// race lost against stealer, try again
+	}
+}
+
+queue_pop :: proc(q: ^Local_Queue($T)) -> (x: T, ok: bool) {
+	head_packed := sync.atomic_load_explicit(&q.top, .Acquire)
+
+	for {
+		steal, real := queue_unpack_head(head_packed)
+
+		// only the owner writes bottojm, so .Relaxed is enough probably
+		tail := sync.atomic_load_explicit(&q.bottom, .Relaxed)
+
+		if real == tail {
+			return x, false
+		}
+
+		next_real := real + 1
+
+		next_packed: Packed_Head
+		if steal == real {
+			// no active stealer, advance both heads
+			next_packed = queue_pack_head(next_real, next_real)
+		} else {
+			// active stealer, preserve steal head and advance real only
+			next_packed = queue_pack_head(steal, next_real)
+		}
+
+		actual, exchanged := sync.atomic_compare_exchange_strong_explicit(
+			&q.top,
+			head_packed,
+			next_packed,
+			.Seq_Cst,
+			.Acquire,
+		)
+
+		if exchanged {
+			idx := queue_idx(real)
+			x = q.array[idx]
+			return x, true
+		}
+
+		head_packed = actual
+	}
 }
 
 queue_steal :: proc(q: ^Local_Queue($T)) -> (x: T, okay: bool) {
-	t := sync.atomic_load_explicit(&q.top, .Acquire)
-	sync.atomic_thread_fence(.Seq_Cst)
-	b := sync.atomic_load_explicit(&q.bottom, .Acquire)
+	head_packed := sync.atomic_load_explicit(&q.top, .Acquire)
 
-	if t < b {
-		// not empty queue
-		x = sync.atomic_load_explicit(&q.array[t % ARRAY_SIZE], .Consume)
-		if _, ok := sync.atomic_compare_exchange_strong_explicit(
-			&q.top,
-			t,
-			t + 1,
-			.Seq_Cst,
-			.Relaxed,
-		); !ok {
-			// failed race
+	claimed_head: Packed_Head
+	claimed_pos: Queue_Index
+
+	for {
+		steal, real := queue_unpack_head(head_packed)
+
+		// we should only allow one active stealer per queue
+		// if theres differencce then another stealer is in progress
+		if steal != real {
 			return x, false
 		}
-		return x, true
-	} else {
-		return x, false
+
+		tail := sync.atomic_load_explicit(&q.bottom, .Acquire)
+
+		if real == tail {
+			return x, false
+		}
+
+		// get one item by advancing real but not steal
+		// which makes steal != real
+		// this marks the queue as having an active stealer
+		next_real := real + 1
+		next_packed := queue_pack_head(steal, next_real)
+
+		actual, exchanged := sync.atomic_compare_exchange_strong_explicit(
+			&q.top,
+			head_packed,
+			next_packed,
+			.Seq_Cst,
+			.Acquire,
+		)
+
+		if exchanged {
+			claimed_head = next_packed
+			claimed_pos = real
+			break
+		}
+
+		head_packed = actual
+	}
+
+	// we own claimed_pos right now
+	// owner and other stealer cannot read this anymore
+	x = q.array[queue_idx(claimed_pos)]
+
+	// finish the steal
+	// while we are reading the task, the owner worker may have popped more
+	// tasks and advanced the real head
+	// preserve that by casing till we set steal head == real head again
+	for {
+		_, real := queue_unpack_head(claimed_head)
+		next_packed := queue_pack_head(real, real)
+
+		actual, exchanged := sync.atomic_compare_exchange_strong_explicit(
+			&q.top,
+			claimed_head,
+			next_packed,
+			.Seq_Cst,
+			.Acquire,
+		)
+
+		if exchanged {
+			return x, true
+		}
+
+		claimed_head = actual
 	}
 }
 
 queue_len :: proc(q: ^Local_Queue($T)) -> int {
-	b := sync.atomic_load_explicit(&q.bottom, .Relaxed)
-	t := sync.atomic_load_explicit(&q.top, .Relaxed)
-	return b - t
+	head_packed := sync.atomic_load_explicit(&q.top, .Acquire)
+	_, real := queue_unpack_head(head_packed)
+
+	tail := sync.atomic_load_explicit(&q.bottom, .Acquire)
+
+	return int(queue_distance(real, tail))
 }
 
 /// we will need a mutex for this

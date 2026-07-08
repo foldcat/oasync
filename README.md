@@ -10,16 +10,17 @@
 INFO: Odin has released [non blocking IO](https://pkg.odin-lang.org/core/nbio/) into it's
 core library! You should use that instead of this.
 
-M:N multithreading for Odin. The end goal is to implement virtual threads that 
+M:N multithreading for Odin. The end goal is to implement virtual threads that
 automatically and quickly parallelize tasks across several os threads.
 
-This library is now stable, but still, feel free to report bugs and request features by 
+This library is now stable, but still, feel free to report bugs and request features by
 creating issues!
 
-Also note that oasync is NOT compatable with `core:sync`. Please use 
+Also note that oasync is NOT compatable with `core:sync`. Please use
 the synchronization primitives provided by oasync instead.
 
 ## features
+
 - quickly and automatically parallelize tasks across a thread pool
 - supports blocking task pool and scheduling tasks to run in the future
 - depends on ONLY the Odin compiler (just like any Odin libraries)
@@ -28,22 +29,27 @@ the synchronization primitives provided by oasync instead.
 - small and commented codebase
 
 ## walkthrough
-It is **HEAVILY** recommend to execute `odin doc .` in the 
-root directory of oasync to read the API documentation. The following 
+
+It is **HEAVILY** recommend to execute `odin doc .` in the
+root directory of oasync to read the API documentation. The following
 walkthough does not cover every procedure and their options.
 
-In the examples below, we will be importing oasync as so: 
-```odin 
+In the examples below, we will be importing oasync as so:
+
+```odin
 import oa "../oasync"
 ```
 
 ### core functionalities
+
 #### initializing oasync runtime
-To use oasync, we first have to initialize it. Note that the following examples 
+
+To use oasync, we first have to initialize it. Note that the following examples
 will all be executed with the following configuration.
+
 ```odin
 main :: proc() {
-    // create a coordinator struct for oasync to store 
+    // create a coordinator struct for oasync to store
     // its internal state
     // it should NOT be modified by the user
     coord: oa.Coordinator
@@ -55,15 +61,15 @@ main :: proc() {
         // a rawptr that will be passed into the init_proc
         init_proc_arg = nil,
         // amount of worker threads oasync will run
-        // omit this field or set to 0 for oasync to use 
+        // omit this field or set to 0 for oasync to use
         // os.get_processor_core_count() as its value
         max_workers = 4,
-        // how many blocking taskes should be allowed 
+        // how many blocking taskes should be allowed
         // to execute at the same time
-        // set as 0 for oasync to use max_workers / 2 
+        // set as 0 for oasync to use max_workers / 2
         // as its value
         max_blocking = 2,
-        // whether to use the main thread as a worker or not, 
+        // whether to use the main thread as a worker or not,
         // counts toward max_workers
         use_main_thread = true,
     )
@@ -75,10 +81,11 @@ core :: proc(_: rawptr) {
 }
 ```
 
-#### logging 
+#### logging
+
 We provide additional information should a logger be supplied.
 
-```odin 
+```odin
 main :: proc() {
     context.logger = log.create_console_logger()
     defer log.destroy_console_logger(context.logger)
@@ -88,17 +95,19 @@ main :: proc() {
 ```
 
 By providing a logger, oasync will log main events. Should `-debug`
-compiler flag be enabled, oasync will also detect worker starvation: 
-A warning will be emitted should a task take more than 40ms 
-to complete. It is recommending to split said task into smaller tasks 
-or use the blocking feature documented below to dispatch in order 
+compiler flag be enabled, oasync will also detect worker starvation:
+A warning will be emitted should a task take more than 40ms
+to complete. It is recommending to split said task into smaller tasks
+or use the blocking feature documented below to dispatch in order
 to prevent hogging the scheduler.
 
 #### running new tasks
+
 It is quite simple to spawn new tasks.
 
 Note that the order of task spawning is not guaranteed
 to be the same as the order of `oa.go` calls.
+
 ```odin
 foo :: proc(_: rawptr) {
 	fmt.println("hi")
@@ -106,30 +115,14 @@ foo :: proc(_: rawptr) {
 
 core :: proc(_: rawptr) {
 	fmt.println("core")
-	oa.go(foo) 
+	oa.go(foo)
 }
-```
-
-In fact, it is far more likely for tasks to execute in reverse
-due a queue algorithm.
-```odin
-foo :: proc(a: rawptr) {
-	fmt.print((cast(^int)a)^, "")
-}
-
-core :: proc(_: rawptr) {
-	fmt.println("started")
-
-	for i in 1 ..= 20 {
-		oa.go(foo, new_clone(i))
-	}
-
-}
-// 20 19 18 17 16...
 ```
 
 #### passing in arguments
+
 It is trival to pass arguments into tasks.
+
 ```odin
 foo :: proc(a: rawptr) {
 	arg := cast(^string)a
@@ -144,14 +137,16 @@ core :: proc(_: rawptr) {
 ```
 
 Due to items allocated on a stack being freed at the end of the scope,
-it is recommended to allocate the items you want to pass into 
+it is recommended to allocate the items you want to pass into
 the next procedure on the heap to prevent accessing freed memories.
 
 #### blocking tasks
-Sometimes you may want to run blocking tasks that takes a 
-long time to complete, this should be avoided as it hogs 
+
+Sometimes you may want to run blocking tasks that takes a
+long time to complete, this should be avoided as it hogs
 the scheduler and leaves one of our threads out of commission.
 One should use `block` in this situation.
+
 ```odin
 blocking :: proc(_: rawptr) {
 	time.sleep(1 * time.Second)
@@ -165,12 +160,15 @@ core :: proc(_: rawptr) {
 	}
 }
 ```
-We only allow `max_blocking` amount of blocking task to run 
+
+We only allow `max_blocking` amount of blocking task to run
 simultaneously, allowing non-blocking tasks to execute under load.
 
 #### timed schedule
+
 It is possible to delay the execution of a task without needing
 `time.sleep()`, as `time.sleep()` hogs the scheduler.
+
 ```odin
 stuff :: proc(a: rawptr) {
 	fmt.println("done!", (cast(^int)a)^)
@@ -184,12 +182,15 @@ core :: proc(_: rawptr) {
 	}
 }
 ```
-Note that timed tasks will execute *during* or *after* the tick you supplied, 
+
+Note that timed tasks will execute _during_ or _after_ the tick you supplied,
 i.e. tasks are not guaranteed to execute at percisely after 5 seconds.
 
 #### unsafe dispatching
-You might want to spawn tasks outside of threads managed 
+
+You might want to spawn tasks outside of threads managed
 by oasync, we call this unsafe dispatching:
+
 ```odin
 task :: proc(_: rawptr) {
 	fmt.println("hi")
@@ -204,49 +205,53 @@ main :: proc() {
 	time.sleep(1 * time.Second)
 }
 ```
-By supplying `go` with a coordinator, it will be capable of 
+
+By supplying `go` with a coordinator, it will be capable of
 dispatching tasks outside of threads managed not by oasync.
 
-This imposes a heavy performance penality and should be 
+This imposes a heavy performance penality and should be
 avoided.
 
 #### shutdown
-Shutting down oasync can be done by executing the following 
+
+Shutting down oasync can be done by executing the following
 in a task.
 
 ```odin
 oa.shutdown(graceful = true)
 ```
 
-Shutdown is `graceful` by default, where the scheduler will wait for 
-the current task to complete before destroying the worker. Should 
-`graceful` be false, `thread.terminate()` will be called on worker 
-threads immediately. It is known that non-`graceful` termination may 
+Shutdown is `graceful` by default, where the scheduler will wait for
+the current task to complete before destroying the worker. Should
+`graceful` be false, `thread.terminate()` will be called on worker
+threads immediately. It is known that non-`graceful` termination may
 result in memory leak and segmented fault.
 
 Even with non-`graceful` shutdown, should `use_main_thread` be true,
-the main thread will be terminated gracefully instead of calling 
-`thread.terminate`, causing additional wait time for the 
+the main thread will be terminated gracefully instead of calling
+`thread.terminate`, causing additional wait time for the
 procedure to yield.
 
-
 ### context system
-To spawn tasks, oasync injects data into `context.user_ptr`. 
-This means that you should NEVER change it. Should you still 
+
+To spawn tasks, oasync injects data into `context.user_ptr`.
+This means that you should NEVER change it. Should you still
 wish to use `context.user_ptr`, the following may be done.
-```odin 
+
+```odin
 core :: proc(_: rawptr) {
 	// cast it into a ref carrier
 	ptr := cast(^oa.Ref_Carrier)context.user_ptr
-	// ONLY access the user_ptr field 
+	// ONLY access the user_ptr field
 	// do NOT access other fields in Ref_Carrier
 	ptr.user_ptr := ...
 }
 ```
 
-However, please note that the context in a task will not be 
-carried over to another task spawned. See below for a 
+However, please note that the context in a task will not be
+carried over to another task spawned. See below for a
 demonstration.
+
 ```odin
 core :: proc(_: rawptr) {
 	context.user_index = 1
@@ -259,28 +264,31 @@ stuff :: proc(_: rawptr) {
 ```
 
 ### synchronization primitives
-We provide oasync native synchronization primitives. These primitives 
+
+We provide oasync native synchronization primitives. These primitives
 will not hog the scheduler unlike `core:sync`.
 
-Each destructor procedure have special behaviors, thus it 
+Each destructor procedure have special behaviors, thus it
 is recommended to seek API documentations.
 
 Note that you should NEVER use the primitives after calling the
 destructor procedures, since it may cause segmented fault.
 
-Also note that the synchronization primitives are acquired at the moment 
-of task dispatch. Should you spawn a delayed procedure, the aquiring of the 
+Also note that the synchronization primitives are acquired at the moment
+of task dispatch. Should you spawn a delayed procedure, the aquiring of the
 primitive begins immediately instead of beginning after the delay ends.
 
-The following examples uses `time.sleep()` for convenience sake. Please do 
+The following examples uses `time.sleep()` for convenience sake. Please do
 not use `time.sleep()` for real world usage unless it is in a blocking task.
 
-#### resources 
-Resources are equivalent to mutexes, where only one task is allowed to access 
+#### resources
+
+Resources are equivalent to mutexes, where only one task is allowed to access
 each resource, and said resource will be released upon task completion
 automatically.
 
 `oa.destroy_resouce()` may be used to delete it.
+
 ```odin
 acquire1 :: proc(_: rawptr) {
 	fmt.println("first acquire")
@@ -311,11 +319,11 @@ second release
 */
 ```
 
-The order of acquire might be different, but it should be impossible for 
+The order of acquire might be different, but it should be impossible for
 another task to acquire the same resource while it is acquired.
 
-Note that it is possible to acquire / release a resource in the middle of 
-a resources via a spinlock. This should be avoided, and should also be 
+Note that it is possible to acquire / release a resource in the middle of
+a resources via a spinlock. This should be avoided, and should also be
 used in a blocking task.
 
 ```odin
@@ -337,9 +345,11 @@ core :: proc(_: rawptr) {
 ```
 
 #### backpressure
+
 Backpressure allows us to rate limit task spawns.
 
 There are two strategies for backpressure:
+
 - Lossy: task will be ran in presence of backpressure
 - Loseless: task will not execute until backpressure is alleviated.
 
@@ -362,8 +372,9 @@ core :: proc(_: rawptr) {
 }
 ```
 
-#### count down latch 
-Count down latches are one shot concurrency primitives that 
+#### count down latch
+
+Count down latches are one shot concurrency primitives that
 blocks any tasks waiting on it until `goal` tasks are waiting.
 
 Use `oa.destroy_cdl()` to free it.
@@ -387,7 +398,8 @@ core :: proc(_: rawptr) {
 ```
 
 #### cyclic barrier
-Cyclic barriers are re-usable synchronization primitives 
+
+Cyclic barriers are re-usable synchronization primitives
 that allows a set amount of tasks to wait until they've all reached the same point.
 
 Use `oa.destroy_cb()` to free it.
@@ -409,7 +421,7 @@ core :: proc(_: rawptr) {
     }
 }
 
-/* 
+/*
 *nothing for 1 second*
 done!
 done!
@@ -420,11 +432,12 @@ done!
 
 ```
 
-#### semaphore 
-Semaphore is internally a counter. When a task acquires the 
-semaphore, the counter incremenets. When a task releases the 
-semaphore, the counter decrements. Should the counter's value 
-be `max`, the task attempting to acquire will block until 
+#### semaphore
+
+Semaphore is internally a counter. When a task acquires the
+semaphore, the counter incremenets. When a task releases the
+semaphore, the counter decrements. Should the counter's value
+be `max`, the task attempting to acquire will block until
 the counter decrements.
 
 Use `oa.destroy_sem()` to free it.
@@ -447,14 +460,16 @@ core :: proc(_: rawptr) {
 ```
 
 #### channels
+
 We offer many to one channels.
 
-It is known that the order of elements placed 
+It is known that the order of elements placed
 into the channel may not be sequencially consistant.
+
 ```odin
 consumer :: proc(a: rawptr) {
 	input := (cast(^int)a)^
-	fmt.println(input) 
+	fmt.println(input)
 }
 
 core :: proc(_: rawptr) {
@@ -467,10 +482,11 @@ core :: proc(_: rawptr) {
 
 In fact, `oa.c_put` is completely non-blocking and asynchronous.
 
-It is possible to make buffered sliding channels. Buffered 
+It is possible to make buffered sliding channels. Buffered
 sliding channels may only hold `capacity` amount of data.
-When capacity is full, buffered sliding channels drops the 
+When capacity is full, buffered sliding channels drops the
 last item to make room for new items.
+
 ```odin
 consumer :: proc(a: rawptr) {
 	input := (cast(^int)a)^
@@ -488,8 +504,9 @@ core :: proc(_: rawptr) {
 
 In order to shutdown the channel, `oa.c_stop()` may be used.
 
-#### task chaining 
-It is possible to make a sequencial task chain acquire one or 
+#### task chaining
+
+It is possible to make a sequencial task chain acquire one or
 more primitives, releasing only after every single task completes.
 
 ```odin
@@ -512,16 +529,17 @@ core :: proc(_: rawptr) {
 ```
 
 Note that chained executions require procedures returning a `rawptr`.
-The return of the first procedure passed into `oa.go` will be passed 
+The return of the first procedure passed into `oa.go` will be passed
 to the next procedure, vice versa.
 
-## testing 
-Testing oasync is as simple as executing `odin test .` in the root 
+## testing
+
+Testing oasync is as simple as executing `odin test .` in the root
 directory of the project.
 
-Note that the test uses 4 worker threads and are executed on-site on my 
+Note that the test uses 4 worker threads and are executed on-site on my
 computer with the CPU `13th Gen Intel(R) Core(TM) i5-13400F (16) @ 4.60 GHz`.
 Tests may fail running on a lower end device.
 
-It is also known that tests may report memory leaks. These leaks are likely false 
+It is also known that tests may report memory leaks. These leaks are likely false
 positives and should be largely ignored.
