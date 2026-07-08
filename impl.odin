@@ -215,14 +215,14 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 			return
 		case .Drop:
 			release_primitives(t, worker, rel_bp = false)
-			free(t)
+			task_recycle(t)
 			return
 
 		case .Delay:
 			coord := worker.coordinator
 			sync.mutex_lock(&coord.timed_mutex)
 			timed_queue_push(&coord.timed_q, t)
-			sync.cond_signal(&coord.timed_cond) // wake bg thread if this is the new closest task
+			sync.cond_signal(&coord.timed_cond)
 			sync.mutex_unlock(&coord.timed_mutex)
 			return
 		}
@@ -241,37 +241,23 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 		// do not execute task
 		// release primitives and drop now
 		release_primitives(t, worker)
+		task_recycle(t)
 		return
 	}
 
-	if is_singleton {
-		release_primitives(t, worker)
-	} else {
-		se := &t.effect.(Chain_Effect)
-		release_primitives(t, worker)
-		delete(se.effects)
-	}
-
-	free(t)
+	release_primitives(t, worker)
+	task_recycle(t)
 }
 
 clean_local_queue :: proc(q: ^Local_Queue(^Task)) {
 	for {
 		item, ok := queue_pop(q)
 		if !ok {
-			// empty
 			return
 		}
 
-		switch v in item.effect {
-		case Singleton_Effect:
-			free(item)
-		case Chain_Effect:
-			delete(v.effects)
-			free(item)
-		}
+		task_free_uncached(item)
 	}
-
 }
 
 _shutdown :: proc(graceful := true) {
@@ -293,15 +279,10 @@ _shutdown :: proc(graceful := true) {
 	}
 
 	// free tasks sitting in the timed queue
+	// free tasks sitting in the timed queue
 	for len(worker.coordinator.timed_q.tasks) > 0 {
 		item, _ := timed_queue_pop(&worker.coordinator.timed_q)
-		switch v in item.effect {
-		case Singleton_Effect:
-			free(item)
-		case Chain_Effect:
-			delete(v.effects)
-			free(item)
-		}
+		task_free_uncached(item)
 	}
 	delete(worker.coordinator.timed_q.tasks)
 
@@ -367,7 +348,7 @@ make_task :: proc(
 		free(v)
 	}
 
-	tsk := new_clone(
+	tsk := task_alloc(
 		Task {
 			effect = ef,
 			arg = data,
@@ -496,7 +477,7 @@ worker_runloop :: proc(t: ^thread.Thread) {
 	log.info("runloop started for worker id", worker.id)
 	for {
 		if !coord.is_running {
-			// termination
+			task_free_list_destroy()
 			free(cast(^Ref_Carrier)context.user_ptr)
 			return
 		}

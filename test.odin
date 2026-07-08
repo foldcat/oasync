@@ -1,6 +1,6 @@
 package oasync
 
-// the following tests may reveal memory leaks 
+// the following tests may reveal memory leaks
 // the leaking is false positives and should be ignored for most cases
 
 import "core:sync"
@@ -168,6 +168,43 @@ test_resource_mutex :: proc(t: ^testing.T) {
 				return
 			}
 		}
+	}
+
+	base_coordinator_setup(core)
+}
+
+@(test)
+test_task_free_list_schedule_stress :: proc(t: ^testing.T) {
+	testing.set_fail_timeout(t, 10 * time.Second)
+
+	increment :: proc(ctr: rawptr) {
+		ctr := cast(^int)ctr
+		sync.atomic_add(ctr, 1)
+	}
+
+	core :: proc(_: rawptr) {
+		trg := new(int)
+
+		// many waves should cause recycling
+		for wave in 0 ..< 20 {
+			for _ in 0 ..< 250 {
+				go(increment, trg)
+			}
+
+			target := (wave + 1) * 250
+			for sync.atomic_load(trg) < target {
+				// spin
+			}
+		}
+
+		if sync.atomic_load(trg) != 5000 {
+			shutdown()
+			free(trg)
+			return
+		}
+
+		shutdown()
+		free(trg)
 	}
 
 	base_coordinator_setup(core)
