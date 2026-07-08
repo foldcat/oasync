@@ -266,7 +266,7 @@ clean_local_queue :: proc(q: ^Local_Queue(^Task)) {
 _shutdown :: proc(graceful := true) {
 	worker := get_worker()
 
-	if worker.coordinator.is_running == false {
+	if !worker.coordinator.is_running {
 		return
 	}
 
@@ -276,7 +276,7 @@ _shutdown :: proc(graceful := true) {
 		if worker.hogs_main_thread {
 			continue
 		}
-		if graceful != true {
+		if !graceful {
 			thread.terminate(worker.thread_obj, 0)
 		}
 		log.info("destroying worker id", worker.id)
@@ -563,7 +563,7 @@ _init :: proc(
 	gqueue_push(&coord.globalq, init_task)
 
 	// treats the main thread as a worker too
-	if use_main_thread == true {
+	if use_main_thread {
 		main_worker := &coord.workers[required_worker_count]
 		setup_worker(
 			worker = main_worker,
