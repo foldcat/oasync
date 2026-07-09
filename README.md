@@ -7,8 +7,9 @@
 
 ![badge](https://img.shields.io/badge/documentation%20taken%20seriously-ff7eb6) ![Static Badge](https://img.shields.io/badge/odin_version-dev--2026--06-blue)
 
-INFO: Besides oasync, [non blocking IO](https://pkg.odin-lang.org/core/nbio/) may also work
-for you, you should check it out.
+INFO: Besides oasync, [non blocking IO](https://pkg.odin-lang.org/core/nbio/) from Odin standard
+library may also work for you, you should check it out. (although oasync and nbio may not
+be compatable with each other)
 
 M:N multithreading for Odin. The end goal is to implement virtual threads that
 automatically and quickly parallelize tasks across several os threads.
@@ -18,6 +19,8 @@ creating issues!
 
 Also note that oasync is NOT compatable with `core:sync`. Please use
 the synchronization primitives provided by oasync instead.
+
+Alongside that, oasync does not support 32 bit systems.
 
 ## features
 
