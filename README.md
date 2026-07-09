@@ -5,7 +5,7 @@
 
 ---
 
-![badge](https://img.shields.io/badge/documentation%20taken%20seriously-ff7eb6) ![Static Badge](https://img.shields.io/badge/odin_version-dev--2026--06-blue)
+![badge](https://img.shields.io/badge/documentation%20taken%20seriously-ff7eb6) ![Static Badge](https://img.shields.io/badge/odin_version-dev--2026--07-blue)
 
 INFO: Besides oasync, [non blocking IO](https://pkg.odin-lang.org/core/nbio/) from Odin standard
 library may also work for you, you should check it out. (although oasync and nbio may not
@@ -214,6 +214,45 @@ dispatching tasks outside of threads managed not by oasync.
 
 This imposes a heavy performance penality and should be
 avoided.
+
+#### yielding
+
+To ensure high throughput without OS level context switching costs (and the
+complexity it brings), oasync uses cooperative multitasking with an internal
+operation budget defaulting to 100.
+
+Every worker thread resets its budget when picking up a task, and when
+`yield_point()` is called, the budget is decremented. When the budgets
+hits zero, we halt execution, put the task back onto queue and run something else
+before rerunning it later. This is different from real coroutines.
+
+**IMPORTANT**: Because Odin functions are flat pointers that does not preserve stack
+frames upon existing, returning from a yield means the function will start from the
+beginning upon resume. To prevent tasks from repeating finished executions or
+entering infinite loops, you must store your progress indicators inside
+your task's argument on the heap.
+
+```odin
+Math_Context :: struct {
+    iterator: int, // tracks loop progress across yields
+    total: int,
+    results: ^[dynamic]f64,
+}
+
+heavy_math_loop :: proc(data: rawptr) {
+    // assuming Math_Context is already populated before being passed in
+    ctx := cast(^Math_Context)data
+    for ctx.iterator < ctx.total {
+        ctx.results[ctx.iterator] = perform_expensive_calculation(ctx.iterator)
+        ctx.iterator += 1
+
+        if oa.yield_point() {
+            return
+        }
+    }
+    fmt.println("done")
+}
+```
 
 #### shutdown
 

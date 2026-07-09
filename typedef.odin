@@ -41,7 +41,12 @@ Worker :: struct {
 	rng_seed:         i32,
 	// for generating unique id for each task
 	task_id_gen:      u32,
+	// for yielding
+	yield_budget:     int,
+	yield_requested:  bool,
 }
+
+DEFAULT_YIELD_BUDGET :: 100
 
 // 16 bits wasted but we could work with this
 // is a bit_field as it can be loaded by sync.atomic_load

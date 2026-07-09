@@ -147,8 +147,25 @@ get_worker_id :: proc() -> u8 {
 /*
 shuts down the coordinator
 */
-shutdown :: proc() {
-	_shutdown()
+shutdown :: proc(graceful := true) {
+	_shutdown(graceful)
+}
+
+/*
+creates a point to signal to oasync that we can pause the task 
+here and resume it later
+*/
+yield_point :: #force_inline proc() -> bool {
+	worker := get_worker()
+	if worker == nil do return false
+
+	worker.yield_budget -= 1
+	if worker.yield_budget <= 0 || worker.yield_requested {
+		worker.yield_requested = true
+		return true
+	}
+
+	return false
 }
 
 /*

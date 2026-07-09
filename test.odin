@@ -209,3 +209,50 @@ test_task_free_list_schedule_stress :: proc(t: ^testing.T) {
 
 	base_coordinator_setup(core)
 }
+
+Yield_State :: struct {
+	iterations_completed: int,
+	entry_count:          int,
+	target_iterations:    int,
+}
+
+heavy_compute_proc :: proc(data: rawptr) {
+	state := cast(^Yield_State)data
+
+	state.entry_count += 1
+
+	for state.iterations_completed < state.target_iterations {
+
+		state.iterations_completed += 1
+
+		if yield_point() {
+			return
+		}
+	}
+
+	shutdown()
+}
+
+@(test)
+test_cooperative_yield :: proc(t: ^testing.T) {
+	state := Yield_State {
+		iterations_completed = 0,
+		entry_count          = 0,
+		target_iterations    = 350,
+	}
+
+	coord: Coordinator
+
+	init_oa(
+		&coord,
+		init_proc = heavy_compute_proc,
+		init_proc_arg = &state,
+		max_workers = 4,
+		max_blocking = 2,
+		use_main_thread = true,
+	)
+
+	testing.expect_value(t, state.iterations_completed, state.target_iterations)
+
+	testing.expect(t, state.entry_count > 1, "the task ran through without yielding")
+}

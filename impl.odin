@@ -122,6 +122,18 @@ Execution_Status :: enum {
 	Drop,
 	// execute next task in chain
 	Advance,
+	// put task back into queue to be resumed
+	Yield,
+}
+
+consume_async_budget :: proc() {
+	worker := get_worker()
+	if worker != nil {
+		worker.yield_budget -= 1
+		if worker.yield_budget <= 0 {
+			worker.yield_requested = true
+		}
+	}
 }
 
 // execute effect
@@ -136,6 +148,14 @@ run_effect :: proc(t: ^Task, worker: ^Worker) -> Execution_Status {
 			.Relaxed,
 		); ok {
 			wrap_measure(v.effect, t.arg, t)
+
+			// yield check
+			if worker.yield_requested {
+				// revert is_done so it can be re executed upon resume
+				sync.atomic_store_explicit(&v.is_done, false, .Release)
+				return .Yield
+			}
+
 		} else {
 			trace("WARNING: ATTEMPTING TO RE-EXECUTE TASKS THAT ARE DONE")
 			return .Drop
@@ -151,6 +171,13 @@ run_effect :: proc(t: ^Task, worker: ^Worker) -> Execution_Status {
 			.Relaxed,
 		); ok {
 			t.arg = wrap_measure(ef.effect, t.arg, t)
+
+			// yield check #2
+			if worker.yield_requested {
+				sync.atomic_store_explicit(&ef.is_done, false, .Release)
+				return .Yield
+			}
+
 		} else {
 			trace("WARNING: ATTEMPTING TO RE-EXECUTE TASKS THAT ARE DONE")
 			return .Drop
@@ -204,6 +231,10 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 
 	worker.current_running = t
 
+	// reset budget for new / reused tasks
+	worker.yield_budget = DEFAULT_YIELD_BUDGET
+	worker.yield_requested = false
+
 	_, is_singleton := t.effect.(Singleton_Effect)
 
 	// should not cause casting error due to short circuiting
@@ -232,14 +263,19 @@ run_task :: proc(t: ^Task, worker: ^Worker) {
 	switch run_effect(t, worker) {
 	case .Pass:
 	// continue
+
 	case .Advance:
 		// spawn task again so the next task in chain could be executed
-		// do not release primitives
 		spawn_task(t)
 		return
+
+	case .Yield:
+		// do not release primitives
+		// spawn the task to push it to the back of the queue
+		spawn_task(t)
+		return
+
 	case .Drop:
-		// do not execute task
-		// release primitives and drop now
 		release_primitives(t, worker)
 		task_recycle(t)
 		return
@@ -278,7 +314,6 @@ _shutdown :: proc(graceful := true) {
 		thread.destroy(worker.coordinator.timed_thread)
 	}
 
-	// free tasks sitting in the timed queue
 	// free tasks sitting in the timed queue
 	for len(worker.coordinator.timed_q.tasks) > 0 {
 		item, _ := timed_queue_pop(&worker.coordinator.timed_q)
